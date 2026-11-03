@@ -394,6 +394,12 @@ h1 {
   --note-playing: #d3b084;
 }
 
+.track-nylon {
+  --note: #9c9d70;
+  --note-hover: #7d8052;
+  --note-playing: #bdc194;
+}
+
 .track-bass {
   --note: #8aa899;
   --note-hover: #698b71;

@@ -70,11 +70,11 @@ function sources(context: TestAudioContext, id: InstrumentId) {
   return [...carriers(context, id), ...plucks(context, id)];
 }
 
-const monoIds = ["keys", "bass"] as const;
+const monoIds = ["keys", "nylon", "bass"] as const;
 
 test("the ensemble has distinct ranges and roles, with more than five melodic pitches", () => {
   const patterns = createSeedPatterns();
-  expect(INSTRUMENTS.map((item) => item.id)).toEqual(["mallet", "keys", "bass", "glass"]);
+  expect(INSTRUMENTS.map((item) => item.id)).toEqual(["mallet", "keys", "nylon", "bass", "glass"]);
   expect(instrument("keys").notes.map((note) => note.name)).toEqual([
     "E5",
     "D5",
@@ -100,7 +100,25 @@ test("the ensemble has distinct ranges and roles, with more than five melodic pi
   }
   expect(patterns.mallet.flat().filter(Boolean)).toHaveLength(8);
   expect(patterns.glass.flat().filter(Boolean)).toHaveLength(2);
-  expect(Object.values(DEFAULT_ENABLED).every(Boolean)).toBe(true);
+  expect(DEFAULT_ENABLED).toEqual({
+    mallet: true,
+    keys: true,
+    nylon: false,
+    bass: true,
+    glass: true,
+  });
+});
+
+test("nylon and felt keys share a starting melody and range but their edits are independent", () => {
+  const patterns = createSeedPatterns();
+  expect(instrument("nylon").notes).toEqual(instrument("keys").notes);
+  expect(patterns.nylon).toEqual(patterns.keys);
+  expect(patterns.nylon).not.toBe(patterns.keys);
+  expect(patterns.nylon[0]).not.toBe(patterns.keys[0]);
+  const edited = togglePatternCell(patterns, "nylon", 0, 0);
+  expect(edited.nylon[0][0]).toBe(true);
+  expect(edited.keys[0][0]).toBe(false);
+  expect(edited.keys).toBe(patterns.keys);
 });
 
 test.each(monoIds)(
@@ -266,7 +284,7 @@ test("the four roles can be muted independently under master volume", async () =
   const context = TestAudioContext.instances[0];
   for (const { id } of INSTRUMENTS) {
     expect(channel(context, id).connect).toHaveBeenCalledWith(context.gains[0]);
-    expect(channel(context, id).gain.value).toBe(id === "glass" ? 0 : 1);
+    expect(channel(context, id).gain.value).toBe(id === "glass" ? 0 : Number(DEFAULT_ENABLED[id]));
   }
   advance(context, 0.23);
   engine.setEnabled("glass", true);
@@ -293,7 +311,7 @@ test.each(monoIds)(
       voice.onended!();
       expect(voice.disconnect).toHaveBeenCalledTimes(1);
     }
-    for (const part of [...context.filters, ...context.gains.slice(5)])
+    for (const part of [...context.filters, ...context.gains.slice(INSTRUMENTS.length + 1)])
       expect(part.disconnect).toHaveBeenCalledTimes(1);
     expect(channel(context, id).disconnect).not.toHaveBeenCalled();
   },
@@ -319,10 +337,31 @@ test("the bass's generated string loses energy over time and reuses buffers only
   expect(late).toBeLessThan(early / 3);
 });
 
+test("nylon has a finite, decaying generated string and reuses only matching pitch buffers", async () => {
+  const patterns = emptyPatterns();
+  paint(patterns, "nylon", "C4", 0);
+  paint(patterns, "nylon", "C4", 2);
+  paint(patterns, "nylon", "E5", 4);
+  const { context } = await start(patterns);
+  runUntil(context, 0.85);
+  const voices = plucks(context, "nylon");
+  expect(voices).toHaveLength(3);
+  expect(voices[0].buffer).toBe(voices[1].buffer);
+  expect(voices[2].buffer).not.toBe(voices[0].buffer);
+  const data = voices[0].buffer!.getChannelData(0);
+  const rms = (values: Float32Array) =>
+    Math.sqrt(values.reduce((sum, value) => sum + value * value, 0) / values.length);
+  expect(rms(data.slice(0, context.sampleRate * 0.04))).toBeGreaterThan(0.05);
+  expect(rms(data.slice(context.sampleRate, context.sampleRate * 1.5))).toBeLessThan(
+    rms(data.slice(0, context.sampleRate * 0.1)) / 10,
+  );
+  expect(data.length / context.sampleRate).toBe(2.2);
+});
+
 test("a stalled scheduler skips missed strikes and damps mono notes whose cells have passed", async () => {
   const patterns = emptyPatterns();
   patterns.mallet[0].fill(true);
-  patterns.keys[0][0] = patterns.bass[0][0] = true;
+  patterns.keys[0][0] = patterns.nylon[0][0] = patterns.bass[0][0] = true;
   const { context, engine } = await start(patterns);
   advance(context, 2);
   const time = 0.05 + 12 * STEP_SECONDS;

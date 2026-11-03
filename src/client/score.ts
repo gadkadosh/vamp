@@ -1,4 +1,4 @@
-import { scheduleGlass, scheduleMallet, startBass, startFeltKeys } from "./voices";
+import { scheduleGlass, scheduleMallet, startBass, startFeltKeys, startNylon } from "./voices";
 
 export const TEMPO = 88;
 export const STEP_COUNT = 32;
@@ -13,6 +13,19 @@ function pitches(midis: readonly number[]): Note[] {
     frequency: 440 * 2 ** ((midi - 69) / 12),
   }));
 }
+
+// The two melody alternatives start with the same range and phrase for comparison.
+const MELODY_NOTES = pitches([76, 74, 72, 71, 69, 67, 65, 64, 62, 60]);
+const MELODY_SEED = [
+  ["E5", 2, 2],
+  ["D5", 6, 2],
+  ["C5", 10, 3],
+  ["B4", 14, 2],
+  ["C5", 18, 3],
+  ["G4", 22, 2],
+  ["A4", 26, 2],
+  ["E5", 30, 2],
+] as const;
 
 export const INSTRUMENTS = [
   {
@@ -45,18 +58,18 @@ export const INSTRUMENTS = [
     description: "Melody · one note at a time",
     mode: "mono",
     // Full C major: F and B add melodic movement beyond the original pentatonic.
-    notes: pitches([76, 74, 72, 71, 69, 67, 65, 64, 62, 60]),
+    notes: MELODY_NOTES,
     start: startFeltKeys,
-    seed: [
-      ["E5", 2, 2],
-      ["D5", 6, 2],
-      ["C5", 10, 3],
-      ["B4", 14, 2],
-      ["C5", 18, 3],
-      ["G4", 22, 2],
-      ["A4", 26, 2],
-      ["E5", 30, 2],
-    ],
+    seed: MELODY_SEED,
+  },
+  {
+    id: "nylon",
+    name: "Nylon pluck",
+    description: "Alternative melody · plucked string · one note at a time",
+    mode: "mono",
+    notes: MELODY_NOTES,
+    start: startNylon,
+    seed: MELODY_SEED,
   },
   {
     id: "bass",
@@ -87,6 +100,7 @@ export type InstrumentId = (typeof INSTRUMENTS)[number]["id"];
 export const DEFAULT_ENABLED: Record<InstrumentId, boolean> = {
   mallet: true,
   keys: true,
+  nylon: false,
   bass: true,
   glass: true,
 };

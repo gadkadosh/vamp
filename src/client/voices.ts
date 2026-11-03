@@ -93,39 +93,98 @@ export function scheduleGlass(
   ]);
 }
 
-const plucks = new WeakMap<BaseAudioContext, Map<number, AudioBuffer>>();
-const BASS_SECONDS = 2.8;
+const STRINGS = {
+  bass: { seconds: 2.8, peak: 0.13, cutoff: 700, attack: 0.01 },
+  nylon: { seconds: 2.2, peak: 0.16, cutoff: 4800, attack: 0.004 },
+} as const;
+type StringKind = keyof typeof STRINGS;
+const plucks = new WeakMap<BaseAudioContext, Map<string, AudioBuffer>>();
 
-function pluckedString(context: BaseAudioContext, frequency: number) {
+function pluckedString(context: BaseAudioContext, frequency: number, kind: StringKind) {
   let cache = plucks.get(context);
   if (!cache) {
     cache = new Map();
     plucks.set(context, cache);
   }
-  let buffer = cache.get(frequency);
+  const key = `${kind}:${frequency}`;
+  let buffer = cache.get(key);
   if (!buffer) {
     buffer = context.createBuffer(
       1,
-      Math.ceil(context.sampleRate * BASS_SECONDS),
+      Math.ceil(context.sampleRate * STRINGS[kind].seconds),
       context.sampleRate,
     );
     const data = buffer.getChannelData(0);
-    const delay = Math.round(context.sampleRate / frequency - 0.5);
     let seed = 42;
-    for (let i = 0; i < delay; i++) {
-      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-      const phase = (2 * Math.PI * i) / (delay + 0.5);
-      data[i] = 0.7 * Math.sin(phase) + 0.22 * Math.sin(phase * 2) + 0.05 * (seed / 2 ** 32 - 0.5);
+    if (kind === "bass") {
+      const delay = Math.round(context.sampleRate / frequency - 0.5);
+      for (let i = 0; i < delay; i++) {
+        seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+        const phase = (2 * Math.PI * i) / (delay + 0.5);
+        data[i] =
+          0.7 * Math.sin(phase) + 0.22 * Math.sin(phase * 2) + 0.05 * (seed / 2 ** 32 - 0.5);
+      }
+      const damping = Math.exp(-1 / (frequency * 1.2));
+      for (let i = delay; i < data.length; i++) {
+        data[i] = damping * 0.5 * (data[i - delay] + (i > delay ? data[i - delay - 1] : 0));
+      }
+    } else {
+      // A triangular displacement models a pluck partway along a nylon string.
+      // Fractional delay keeps higher melody pitches in tune between sample positions.
+      const period = context.sampleRate / frequency - 0.5;
+      const delay = Math.floor(period);
+      const fraction = period - delay;
+      const initial = delay + 2;
+      for (let i = 0; i < initial; i++) {
+        seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+        const phase = (i / (period + 0.5)) % 1;
+        const displacement = phase < 0.22 ? phase / 0.22 : (1 - phase) / 0.78;
+        data[i] = displacement - 0.5 + 0.012 * (seed / 2 ** 32 - 0.5);
+      }
+      const mean = data.slice(0, initial).reduce((sum, value) => sum + value, 0) / initial;
+      for (let i = 0; i < initial; i++) data[i] -= mean;
+      const damping = Math.exp(-1 / frequency);
+      for (let i = initial; i < data.length; i++) {
+        const first = data[i - delay] * (1 - fraction) + data[i - delay - 1] * fraction;
+        const second = data[i - delay - 1] * (1 - fraction) + data[i - delay - 2] * fraction;
+        data[i] = damping * 0.5 * (first + second);
+      }
     }
-    // Karplus–Strong-style string decay: each trip around the string loses a
-    // little energy and more high frequencies. No steady oscillator underneath.
-    const damping = Math.exp(-1 / (frequency * 1.2));
-    for (let i = delay; i < data.length; i++) {
-      data[i] = damping * 0.5 * (data[i - delay] + (i > delay ? data[i - delay - 1] : 0));
-    }
-    cache.set(frequency, buffer);
+    cache.set(key, buffer);
   }
   return buffer;
+}
+
+function startPluck(
+  context: BaseAudioContext,
+  output: AudioNode,
+  frequency: number,
+  time: number,
+  kind: StringKind,
+) {
+  const voice = STRINGS[kind];
+  const source = context.createBufferSource();
+  const body = context.createBiquadFilter();
+  const envelope = context.createGain();
+  const gate = context.createGain();
+  source.buffer = pluckedString(context, frequency, kind);
+  body.type = "lowpass";
+  body.frequency.value = voice.cutoff;
+  body.Q.value = 0.5;
+  envelope.gain.setValueAtTime(0, time);
+  envelope.gain.linearRampToValueAtTime(voice.peak, time + voice.attack);
+  envelope.gain.setValueAtTime(voice.peak, time + voice.seconds - 0.08);
+  envelope.gain.linearRampToValueAtTime(0, time + voice.seconds);
+  source.connect(body).connect(envelope).connect(gate).connect(output);
+  source.start(time);
+  source.stop(time + voice.seconds);
+  source.onended = () => {
+    source.disconnect();
+    body.disconnect();
+    envelope.disconnect();
+    gate.disconnect();
+  };
+  return damper(gate, [{ source, end: time + voice.seconds }], time);
 }
 
 export function startBass(
@@ -134,26 +193,14 @@ export function startBass(
   frequency: number,
   time: number,
 ) {
-  const source = context.createBufferSource();
-  const body = context.createBiquadFilter();
-  const envelope = context.createGain();
-  const gate = context.createGain();
-  source.buffer = pluckedString(context, frequency);
-  body.type = "lowpass";
-  body.frequency.value = 700;
-  body.Q.value = 0.5;
-  envelope.gain.setValueAtTime(0, time);
-  envelope.gain.linearRampToValueAtTime(0.13, time + 0.01);
-  envelope.gain.setValueAtTime(0.13, time + BASS_SECONDS - 0.08);
-  envelope.gain.linearRampToValueAtTime(0, time + BASS_SECONDS);
-  source.connect(body).connect(envelope).connect(gate).connect(output);
-  source.start(time);
-  source.stop(time + BASS_SECONDS);
-  source.onended = () => {
-    source.disconnect();
-    body.disconnect();
-    envelope.disconnect();
-    gate.disconnect();
-  };
-  return damper(gate, [{ source, end: time + BASS_SECONDS }], time);
+  return startPluck(context, output, frequency, time, "bass");
+}
+
+export function startNylon(
+  context: BaseAudioContext,
+  output: AudioNode,
+  frequency: number,
+  time: number,
+) {
+  return startPluck(context, output, frequency, time, "nylon");
 }

@@ -63,9 +63,11 @@ function App() {
     applyEnabled({ ...enabled, [instrument]: !enabled[instrument] });
   }
 
-  function audition(instrument: InstrumentId | "all") {
-    const next = { ...enabled };
-    for (const { id } of INSTRUMENTS) next[id] = instrument === "all" || id === instrument;
+  function audition(instrument: InstrumentId | "ensemble") {
+    const next = { ...DEFAULT_ENABLED };
+    if (instrument !== "ensemble") {
+      for (const { id } of INSTRUMENTS) next[id] = id === instrument;
+    }
     applyEnabled(next);
     if (!playing && !busy) void togglePlayback();
   }
@@ -106,8 +108,8 @@ function App() {
           <div className="tempo">
             <strong>{TEMPO}</strong> BPM<span>4/4 · two measures</span>
           </div>
-          <button className="ensemble-button" onClick={() => audition("all")}>
-            All voices
+          <button className="ensemble-button" onClick={() => audition("ensemble")}>
+            Ensemble
           </button>
           <div className="level-control master-volume">
             <label htmlFor="volume">Volume</label>
