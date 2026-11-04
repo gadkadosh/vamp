@@ -10,13 +10,22 @@ const candidate = { id: 2, step: 12.31, tone: 11.18 };
 
 function recordingContext() {
   type Point = { x: number; y: number };
-  const strokes: { points: Point[]; dash: number[]; color: unknown }[] = [];
+  const strokes: {
+    points: Point[];
+    dash: number[];
+    color: unknown;
+    width: number;
+    alpha: number;
+  }[] = [];
+  const gradients: { stops: { offset: number; color: string }[] }[] = [];
   const labels: string[] = [];
   const circles: { x: number; y: number; radius: number }[] = [];
   let points: Point[] = [],
     dash: number[] = [];
   const context = {
     strokeStyle: "",
+    lineWidth: 1,
+    globalAlpha: 1,
     clearRect() {},
     fill() {},
     beginPath() {
@@ -32,7 +41,13 @@ function recordingContext() {
       dash = value;
     },
     stroke() {
-      strokes.push({ points: [...points], dash: [...dash], color: this.strokeStyle });
+      strokes.push({
+        points: [...points],
+        dash: [...dash],
+        color: this.strokeStyle,
+        width: this.lineWidth,
+        alpha: this.globalAlpha,
+      });
     },
     fillText(text: string) {
       labels.push(text);
@@ -41,7 +56,14 @@ function recordingContext() {
       circles.push({ x, y, radius });
     },
     createLinearGradient() {
-      return { addColorStop() {} };
+      const gradient = {
+        stops: [] as { offset: number; color: string }[],
+        addColorStop(offset: number, color: string) {
+          this.stops.push({ offset, color });
+        },
+      };
+      gradients.push(gradient);
+      return gradient;
     },
     createRadialGradient() {
       return { addColorStop() {} };
@@ -52,6 +74,7 @@ function recordingContext() {
     strokes,
     labels,
     circles,
+    gradients,
   };
 }
 
@@ -64,9 +87,16 @@ const scene: Scene = {
   feedback: null,
 };
 
-function render(state: Scene) {
+function render(state: Scene, viewport = size) {
   const recorded = recordingContext();
-  drawSpace(recorded.context, state, size, null, layoutSources(state.document.sources, size), 0);
+  drawSpace(
+    recorded.context,
+    state,
+    viewport,
+    null,
+    layoutSources(state.document.sources, viewport),
+    0,
+  );
   return recorded;
 }
 
@@ -84,6 +114,8 @@ test("placing or dragging shows snapped guides and a landing ring without a note
       ],
       dash: [2, 5],
       color: "#dce6ce3d",
+      width: 0.7,
+      alpha: 1,
     },
   ]);
   expect(recorded.circles).toContainEqual({ ...target, radius: 5.5 });
@@ -100,20 +132,70 @@ test("the renderer draws wrapped ringing tails without moving heads or adding no
   const recorded = render({ ...scene, document, score: compose(document) });
   const point = layoutSources(document.sources, size)[0];
   const tail = tailLayout(point, size);
-  const horizontal = recorded.strokes.filter(
-    (stroke) => stroke.points.length === 2 && stroke.points[0].y === stroke.points[1].y,
-  );
-  expect(horizontal.map((stroke) => stroke.points)).toEqual(
-    tail.segments.flatMap((segment) => [
-      [segment.from, segment.to],
-      [segment.from, segment.to],
-    ]),
-  );
+  expect(recorded.strokes).toHaveLength(4);
+  expect(
+    recorded.strokes.filter((stroke) => stroke.width === 1).map((stroke) => stroke.points),
+  ).toEqual(tail.segments.map((segment) => [segment.from, segment.to]));
   expect(recorded.circles.filter((circle) => circle.radius === 5.2)).toEqual([
     { ...point.position, radius: 5.2 },
   ]);
   expect(compose(document)).toHaveLength(1);
   expect(recorded.labels).toEqual([]);
+  // Wrapping must not restart the head's brighter color at the left edge.
+  expect(recorded.gradients[0].stops.at(-1)?.color).toBe(recorded.gradients[1].stops[0].color);
+  expect(recorded.gradients[1].stops[0].color).not.toBe(recorded.gradients[0].stops[0].color);
+});
+
+test.each([
+  { width: 900, step: 2, length: 4 },
+  { width: 390, step: 2, length: 1 },
+  { width: 900, step: 0, length: 32 },
+])(
+  "round lights keep fine tails that emerge from the glow without changing duration (width $width, step $step, length $length)",
+  ({ width, step, length }) => {
+    const viewport = { width, height: 600 };
+    const document: Scene["document"] = {
+      voice: "keys",
+      sources: [{ id: 1, step, tone: 11, length }],
+    };
+    const recorded = render({ ...scene, document, score: compose(document) }, viewport);
+    const point = layoutSources(document.sources, viewport)[0];
+    const end = tailLayout(point, viewport).segments[0].to;
+    const gradient = recorded.gradients[0];
+    expect(recorded.strokes).toEqual([
+      { points: [point.position, end], color: gradient, dash: [], width: 3.2, alpha: 0.12 },
+      { points: [point.position, end], color: gradient, dash: [], width: 1, alpha: 1 },
+    ]);
+    expect(recorded.circles).toContainEqual({ ...point.position, radius: 5.2 });
+    const pixelLength = end.x - point.position.x;
+    expect(gradient.stops.map((stop) => stop.offset)).toEqual([
+      0,
+      Math.min(2 / pixelLength, 0.15),
+      Math.min(18 / pixelLength, 0.45),
+      0.6,
+      1,
+    ]);
+    const opacities = gradient.stops.map((stop) => Number.parseInt(stop.color.slice(-2), 16));
+    // Transparent at the head, a gentle reveal inside its glow, then a quiet fade.
+    expect(opacities.slice(0, 2)).toEqual([0, 0]);
+    expect(opacities[2]).toBeGreaterThan(opacities[3]);
+    expect(opacities[3]).toBeGreaterThan(opacities[4]);
+    expect(opacities[2]).toBeLessThan(80);
+    expect(opacities[4]).toBeGreaterThan(0);
+  },
+);
+
+test("selection makes the tail easier to follow without adding permanent guides", () => {
+  const idle = render(scene),
+    selected = render({ ...scene, selected: 1 });
+  const peak = (state: ReturnType<typeof render>) =>
+    Math.max(...state.gradients[0].stops.map((stop) => Number.parseInt(stop.color.slice(-2), 16)));
+  expect(peak(selected)).toBeGreaterThan(peak(idle));
+  expect(selected.strokes.filter((stroke) => stroke.dash.length)).toEqual([]);
+  expect(selected.labels).toEqual([]);
+  expect(selected.circles.filter((circle) => circle.radius === 5.2)).toEqual(
+    idle.circles.filter((circle) => circle.radius === 5.2),
+  );
 });
 
 test("resizing previews the quantized tail endpoint rather than moving the note's onset", () => {

@@ -134,8 +134,11 @@ export function drawSpace(
   for (const point of points) {
     const color = toneFor(point.source).color;
     const selected = point.source.id === scene.selected;
-    const pulse = pulseFor(point.source);
     const tail = tailLayout(point, size);
+    const length = (point.length * bounds.width) / STEP_COUNT;
+    // Let the filament emerge inside the head's glow instead of touching its rim.
+    const emergeFrom = Math.min(2 / length, 0.15);
+    const emergeTo = Math.min(18 / length, 0.45);
     for (const segment of tail.segments) {
       const gradient = context.createLinearGradient(
         segment.from.x,
@@ -143,22 +146,27 @@ export function drawSpace(
         segment.to.x,
         segment.to.y,
       );
-      for (const [stop, fraction] of [
-        [0, segment.fromFraction],
-        [1, segment.toFraction],
-      ]) {
-        const alpha = (selected ? 0.7 : 0.44) * (1 - fraction * 0.75);
+      const stops = [
+        segment.fromFraction,
+        ...[emergeFrom, emergeTo, 0.6].filter(
+          (fraction) => fraction > segment.fromFraction && fraction < segment.toFraction,
+        ),
+        segment.toFraction,
+      ];
+      for (const fraction of stops) {
+        const reveal = Math.max(0, Math.min(1, (fraction - emergeFrom) / (emergeTo - emergeFrom)));
+        const alpha = (selected ? 0.55 : 0.3) * reveal * (1 - fraction * 0.88);
         gradient.addColorStop(
-          stop,
+          (fraction - segment.fromFraction) / (segment.toFraction - segment.fromFraction),
           `${color}${Math.round(alpha * 255)
             .toString(16)
             .padStart(2, "0")}`,
         );
       }
-      context.globalAlpha = 0.13 + pulse * 0.15;
-      line(context, [segment.from, segment.to], gradient, 7);
+      context.globalAlpha = 0.12;
+      line(context, [segment.from, segment.to], gradient, 3.2);
       context.globalAlpha = 1;
-      line(context, [segment.from, segment.to], gradient, 1.8);
+      line(context, [segment.from, segment.to], gradient, 1);
     }
     if (selected) line(context, [tail.end, tail.handle], `${color}55`, 0.8);
   }
