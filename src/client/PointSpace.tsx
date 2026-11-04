@@ -56,6 +56,7 @@ export function PointSpace(props: Props) {
   const [draft, setDraft] = useState<Source | null>(null);
   const draftRef = useRef(draft);
   const [dragging, setDragging] = useState(false);
+  const [keyboard, setKeyboard] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(
     () => matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
@@ -80,7 +81,18 @@ export function PointSpace(props: Props) {
   latest.current = scene;
   const lights = layoutSources(sources, size, motion.current, performance.now());
   const selectedLight = lights.find((point) => point.source.id === scene.selected);
-  const handlePosition = selectedLight ? tailLayout(selectedLight, size).handle : null;
+  const handlePosition = selectedLight ? tailLayout(selectedLight, size).end : null;
+
+  useEffect(() => {
+    const keyDown = () => setKeyboard(true);
+    const pointerDown = () => setKeyboard(false);
+    window.addEventListener("keydown", keyDown, true);
+    window.addEventListener("pointerdown", pointerDown, true);
+    return () => {
+      window.removeEventListener("keydown", keyDown, true);
+      window.removeEventListener("pointerdown", pointerDown, true);
+    };
+  }, []);
 
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) =>
@@ -119,7 +131,7 @@ export function PointSpace(props: Props) {
       }
       const selected = points.find((point) => point.source.id === scene.selected);
       if (selected && lengthElement.current) {
-        const handle = tailLayout(selected, size).handle;
+        const handle = tailLayout(selected, size).end;
         lengthElement.current.style.left = `${handle.x}px`;
         lengthElement.current.style.top = `${handle.y}px`;
       }
@@ -297,7 +309,7 @@ export function PointSpace(props: Props) {
   return (
     <div
       ref={surface}
-      className={`point-space${dragging ? " is-dragging" : ""}`}
+      className={`point-space${dragging ? " is-dragging" : ""}${dragging && gesture.current?.resizing ? " is-resizing" : ""}${keyboard ? " is-keyboard" : ""}`}
       tabIndex={0}
       role="group"
       aria-label="Interactive constellation"
@@ -368,9 +380,10 @@ export function PointSpace(props: Props) {
         release to settle on the previewed beat and pitch. Occupied bass beats and identical sounds
         are rejected. Shift-drag to scatter lights; right-click to remove. Keyboard: Enter adds;
         arrows move one timing step or pitch; brackets shorten or lengthen the selection. Select a
-        light and drag its end handle to change ringing time. The handle is keyboard-focusable; left
-        and right arrows resize it. Delete removes; Escape deselects; Space plays or pauses. Tab
-        leaves the surface and its selected controls. Undo restores the previous gesture.
+        light and drag its end-cap to change ringing time. The end-cap is keyboard-focusable; left
+        and right arrows resize it. Keyboard focus uses corner marks. Delete removes; Escape
+        deselects; Space plays or pauses. Tab leaves the surface and its selected controls. Undo
+        restores the previous gesture.
       </p>
     </div>
   );

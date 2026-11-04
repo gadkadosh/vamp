@@ -70,7 +70,7 @@ test("tail width follows musical length while the note head stays fixed", () => 
       toFraction: 1,
     },
   ]);
-  expect(tail.handle).toEqual({ x: tail.end.x, y: tail.end.y + 16 });
+  expect(tail.end).toEqual({ x: point.position.x + 120, y: point.position.y });
 });
 
 test("tails split at the loop seam without changing total length or the endpoint's pitch", () => {
@@ -86,10 +86,9 @@ test("tails split at the loop seam without changing total length or the endpoint
   expect(segments[1].fromFraction).toBe(0.25);
   const fullLoop = tailLayout(layoutSources([{ ...light, step: 16, length: 32 }], size)[0], size);
   expect(fullLoop.end).toEqual(locate({ ...light, step: 16 }, size));
-  expect(fullLoop.handle.y).toBe(fullLoop.end.y + 16);
 });
 
-test("the tail and its handle share the same length while settling or returning after cancellation", () => {
+test("the end-cap stays at the tail endpoint while settling or returning after cancellation", () => {
   const from = { ...light, length: 3.6 },
     to = { ...light, length: 4 };
   const motion = { from, to, started: 100 };
@@ -103,7 +102,7 @@ test("the tail and its handle share the same length while settling or returning 
   for (const point of [start, middle, end]) {
     const tail = tailLayout(point, size);
     expect(tail.end.x).toBeCloseTo(point.position.x + point.length * 30);
-    expect(tail.handle.x).toBe(tail.end.x);
+    expect(tail.end.y).toBe(point.position.y);
   }
   expect(
     layoutSources([from], size, { from: to, to: from, started: 100 }, 100 + SETTLE_MS)[0].length,

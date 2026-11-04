@@ -198,6 +198,7 @@ h1 {
 }
 .light-hit {
   position: absolute;
+  z-index: 2;
   transform: translate(-50%, -50%);
   width: 27px;
   height: 27px;
@@ -210,12 +211,35 @@ h1 {
 .light-hit:active {
   cursor: grabbing;
 }
-.light-hit:focus-visible {
-  outline-color: var(--accent);
-  outline-offset: 2px;
+.light-hit:focus-visible,
+.length-hit:focus-visible {
+  outline: none;
+}
+.light-hit::after,
+.length-hit::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  pointer-events: none;
+  color: var(--accent);
+  background:
+    linear-gradient(currentColor 0 0) top left / 5px 1px no-repeat,
+    linear-gradient(currentColor 0 0) top left / 1px 5px no-repeat,
+    linear-gradient(currentColor 0 0) top right / 5px 1px no-repeat,
+    linear-gradient(currentColor 0 0) top right / 1px 5px no-repeat,
+    linear-gradient(currentColor 0 0) bottom left / 5px 1px no-repeat,
+    linear-gradient(currentColor 0 0) bottom left / 1px 5px no-repeat,
+    linear-gradient(currentColor 0 0) bottom right / 5px 1px no-repeat,
+    linear-gradient(currentColor 0 0) bottom right / 1px 5px no-repeat;
+  opacity: 0;
+}
+.is-keyboard .light-hit:focus-visible::after,
+.is-keyboard .length-hit:focus-visible::after {
+  opacity: 1;
 }
 .length-hit {
   position: absolute;
+  z-index: 1;
   transform: translate(-50%, -50%);
   display: grid;
   place-items: center;
@@ -228,11 +252,18 @@ h1 {
   cursor: ew-resize;
 }
 .length-hit > span {
-  width: 7px;
-  height: 7px;
-  border: 1px solid currentColor;
-  background: #10191f;
-  transform: rotate(45deg);
+  width: 1px;
+  height: 9px;
+  background: currentColor;
+  opacity: 0.65;
+}
+.is-resizing,
+.is-resizing button {
+  cursor: ew-resize;
+}
+.is-resizing .length-hit > span {
+  width: 2px;
+  opacity: 1;
 }
 .surface-caption,
 .gesture-hint {
@@ -523,26 +554,27 @@ h1 {
   }
   .instrument-footer {
     min-height: 100px;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 4px 8px;
     padding: 12px 0;
   }
   .playback-controls {
-    grid-column: 1 / -1;
+    grid-column: 1;
     grid-row: 1;
+    justify-content: flex-start;
   }
   .play-button {
     padding: 10px 17px;
     min-width: 148px;
   }
   .selection-tools {
-    grid-column: 1;
+    grid-column: 1 / -1;
     grid-row: 2;
-    min-height: 29px;
+    min-height: 44px;
   }
   .selection-tools .icon-button {
-    width: 26px;
-    height: 26px;
+    width: 32px;
+    height: 32px;
     padding: 6px;
   }
   .selection-dot {
@@ -560,7 +592,10 @@ h1 {
   }
   .listening-tools {
     grid-column: 2;
-    grid-row: 2;
+    grid-row: 1;
+  }
+  .loop-count {
+    display: none;
   }
   .listening-tools .icon-button {
     width: 27px;

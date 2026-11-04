@@ -20,6 +20,7 @@ function recordingContext() {
   const gradients: { stops: { offset: number; color: string }[] }[] = [];
   const labels: string[] = [];
   const circles: { x: number; y: number; radius: number }[] = [];
+  const fills: { alpha: number; circle: (typeof circles)[number] | undefined }[] = [];
   let points: Point[] = [],
     dash: number[] = [];
   const context = {
@@ -27,7 +28,9 @@ function recordingContext() {
     lineWidth: 1,
     globalAlpha: 1,
     clearRect() {},
-    fill() {},
+    fill() {
+      fills.push({ alpha: this.globalAlpha, circle: circles.at(-1) });
+    },
     beginPath() {
       points = [];
     },
@@ -75,6 +78,7 @@ function recordingContext() {
     labels,
     circles,
     gradients,
+    fills,
   };
 }
 
@@ -185,7 +189,7 @@ test.each([
   },
 );
 
-test("selection makes the tail easier to follow without adding permanent guides", () => {
+test("selection strengthens the light's glow and tail without adding outlines or permanent guides", () => {
   const idle = render(scene),
     selected = render({ ...scene, selected: 1 });
   const peak = (state: ReturnType<typeof render>) =>
@@ -193,19 +197,44 @@ test("selection makes the tail easier to follow without adding permanent guides"
   expect(peak(selected)).toBeGreaterThan(peak(idle));
   expect(selected.strokes.filter((stroke) => stroke.dash.length)).toEqual([]);
   expect(selected.labels).toEqual([]);
+  expect(selected.strokes.map((stroke) => stroke.points)).toEqual(
+    idle.strokes.map((stroke) => stroke.points),
+  );
+  expect(selected.fills).toContainEqual({
+    circle: { ...locate(document.sources[0], size), radius: 48 },
+    alpha: 0.17,
+  });
+  expect(idle.fills).toContainEqual({
+    circle: { ...locate(document.sources[0], size), radius: 35 },
+    alpha: 0.09,
+  });
   expect(selected.circles.filter((circle) => circle.radius === 5.2)).toEqual(
     idle.circles.filter((circle) => circle.radius === 5.2),
   );
 });
 
-test("resizing previews the quantized tail endpoint rather than moving the note's onset", () => {
-  const source = { ...candidate, step: 12, tone: 11, length: 3.6 };
-  const recorded = render({ ...scene, preview: { source, collisions: [], resizing: true } });
-  const target = tailLayout(layoutSources([snapSource(source)], size)[0], size).end;
-  expect(recorded.circles).toContainEqual({ ...target, radius: 5.5 });
-  expect(recorded.strokes.find((stroke) => stroke.dash.length)?.points[1]).toEqual(target);
-  expect(recorded.labels).toEqual([]);
-});
+test.each([12, 30])(
+  "resizing at step %s previews only a vertical endpoint guide, without a landing ring",
+  (step) => {
+    const source = { ...candidate, step, tone: 11, length: 3.6 };
+    const recorded = render({ ...scene, preview: { source, collisions: [], resizing: true } });
+    const target = tailLayout(layoutSources([snapSource(source)], size)[0], size).end;
+    const bounds = fieldBounds(size);
+    expect(
+      recorded.strokes.filter((stroke) => stroke.dash.length).map((stroke) => stroke.points),
+    ).toEqual([
+      [
+        { x: target.x, y: bounds.top },
+        { x: target.x, y: bounds.top + bounds.height + 10 },
+      ],
+    ]);
+    expect(
+      recorded.circles.filter((circle) => circle.radius === 5.5 || circle.radius === 1.5),
+    ).toEqual([]);
+    expect(recorded.strokes.filter((stroke) => stroke.points.length === 0)).toEqual([]);
+    expect(recorded.labels).toEqual([]);
+  },
+);
 
 test("without an active placement, there are no alignment guides, landing ring, or temporary labels", () => {
   const recorded = render(scene);

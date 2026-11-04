@@ -338,9 +338,10 @@ function App() {
                 <dt>Let it ring</dt>
                 <dd>
                   A light starts the note; its tail is how long it may ring. Select a light and drag
-                  the small diamond at its end to change length. Brackets also shorten or lengthen
-                  the selection. Tails continue across the loop edge. Bass ends at the next bass
-                  note. Sounds decay naturally; a longer tail does not hold them at full volume.
+                  small end-cap to change length. A vertical guide previews its snapped ending;
+                  release to settle. Brackets shorten or lengthen the selection one step at a time.
+                  Tails continue across the loop edge. Bass ends at the next bass note. Sounds decay
+                  naturally; a longer tail does not hold them at full volume.
                 </dd>
               </div>
               <div>
@@ -422,8 +423,10 @@ function App() {
         </div>
         <div className="listening-tools">
           <span className="source-count">
-            {document.sources.length} {document.sources.length === 1 ? "note" : "notes"} <i>·</i>{" "}
-            one loop
+            {document.sources.length} {document.sources.length === 1 ? "note" : "notes"}
+            <span className="loop-count">
+              <i>·</i> one loop
+            </span>
           </span>
           <span className="tool-divider" />
           <button

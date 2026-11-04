@@ -75,8 +75,7 @@ export function tailLayout(point: LightProjection, size: Size) {
       toFraction: 1,
     });
   const end = segments[segments.length - 1].to;
-  // Hang the handle below the endpoint so even a one-step tail doesn't cover its head.
-  return { segments, end, handle: { x: end.x, y: end.y + 16 } };
+  return { segments, end };
 }
 
 export function pick(x: number, y: number, size: Size): Pick<Source, "step" | "tone"> {

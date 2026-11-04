@@ -168,7 +168,6 @@ export function drawSpace(
       context.globalAlpha = 1;
       line(context, [segment.from, segment.to], gradient, 1);
     }
-    if (selected) line(context, [tail.end, tail.handle], `${color}55`, 0.8);
   }
 
   for (const { source, position } of points) {
@@ -182,8 +181,13 @@ export function drawSpace(
       scene.preview?.collisions.some(matches) ||
       (age < 900 && scene.feedback?.collisions.some(matches));
     if (conflict) ring(context, position, 14, "#ef9b86", 1.3);
-    glow(context, position, (selected ? 56 : 35) + pulse * 32, color, 0.09 + pulse * 0.25);
-    if (selected) ring(context, position, 16, `${color}77`, 0.8);
+    glow(
+      context,
+      position,
+      (selected ? 48 : 35) + pulse * 32,
+      color,
+      (selected ? 0.17 : 0.09) + pulse * 0.25,
+    );
     if (pulse > 0.03)
       ring(
         context,
@@ -201,7 +205,7 @@ export function drawSpace(
       position.y,
       5.2,
     );
-    gradient.addColorStop(0, pulse > 0.2 ? "#fffef4" : "#edece0");
+    gradient.addColorStop(0, pulse > 0.2 ? "#fffef4" : selected ? "#fff8e9" : "#edece0");
     gradient.addColorStop(0.3, color);
     gradient.addColorStop(1, `${color}65`);
     circle(context, position, 5.2, gradient);
@@ -227,17 +231,24 @@ export function drawSpace(
     context.setLineDash([2, 5]);
     line(
       context,
-      [
-        { x: bounds.left, y: target.y },
-        { x: target.x, y: target.y },
-        { x: target.x, y: bounds.top + bounds.height + 10 },
-      ],
+      scene.preview.resizing
+        ? [
+            { x: target.x, y: bounds.top },
+            { x: target.x, y: bounds.top + bounds.height + 10 },
+          ]
+        : [
+            { x: bounds.left, y: target.y },
+            { x: target.x, y: target.y },
+            { x: target.x, y: bounds.top + bounds.height + 10 },
+          ],
       `${color}3d`,
       0.7,
     );
     context.setLineDash([]);
-    line(context, [from, target], `${color}66`, 0.75);
-    ring(context, target, 5.5, `${color}aa`, 0.9);
-    circle(context, target, 1.5, `${color}bb`);
+    if (!scene.preview.resizing) {
+      line(context, [from, target], `${color}66`, 0.75);
+      ring(context, target, 5.5, `${color}aa`, 0.9);
+      circle(context, target, 1.5, `${color}bb`);
+    }
   }
 }

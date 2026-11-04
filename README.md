@@ -18,7 +18,7 @@ Open the URL printed by Vite, then press **Play & discover** to enable audio.
 
 Notes appear as colored lights on a dark field. Left to right is time in a two-measure loop; bottom to top is low to high pitch. There are no cameras, depth controls, input modes, or permanent pitch grids. Open **?** to discover the rules.
 
-Press **Play & discover** to hear the starting phrase. Tap empty space to add a light; drag a light to change timing and pitch. A snapped landing ring and temporary alignment guides appear only while pressing to place or dragging a light, for both mouse and touch. There is no hover preview or temporary note-name label. The preview does not add or sound a note and disappears on release or cancellation. Select a light to duplicate or remove it; undo restores the previous gesture.
+Press **Play & discover** to hear the starting phrase. Tap empty space to add a light; drag a light to change timing and pitch. A snapped landing ring and temporary alignment guides appear only while pressing to place or dragging a light, for both mouse and touch. There is no hover preview or temporary note-name label. The preview does not add or sound a note and disappears on release or cancellation. Selection gently strengthens the light's glow and tail, without a surrounding ring. Select a light to duplicate, remove, or adjust its length; undo restores the previous gesture.
 
 ### Magnetic timing and pitch
 
@@ -28,7 +28,9 @@ Dragging is a local preview: the original music continues until a valid release,
 
 ### Ringing length
 
-Each light has a horizontal, fading tail: the maximum time its sound may ring. Select a light and drag the small diamond below its endpoint to resize it, without moving its onset or pitch. Length follows the pointer freely and settles to whole sixteenth-note steps on release, from 1 to 32 steps. The tail continues at the left edge if it crosses the loop seam.
+Each light has a horizontal, fading tail: the maximum time its sound may ring. Select a light and drag the small vertical end-cap to resize it, without moving its onset or pitch. During resizing, the cap brightens and a faint vertical guide previews the snapped ending; there is no landing ring. Length follows the pointer freely and settles to whole sixteenth-note steps on release, from 1 to 32 steps. The tail continues at the left edge if it crosses the loop seam.
+
+For one-step adjustments, use **[ / ]** or focus the end-cap and press left/right. Head dragging takes priority when hit areas overlap. Very short or full-loop notes can therefore have an endpoint that is obscured by the head on touch screens.
 
 Shortening damps **every material**, including mallet and glass. Extending allows the natural decay to continue; it does not hold the volume constant or stretch the sound. Bass tails end at the next bass note, and resizing cannot extend past that onset. Overlapping polyphonic notes keep independent gates.
 
@@ -37,13 +39,13 @@ Unedited lights inherit their material's default: bass 4 steps, felt/nylon 2, ma
 ### Gestures
 
 - **Click empty space:** add a light at its magnetic landing point. **Drag a light:** preview a new timing and pitch, then release to commit.
-- **Drag the selected endpoint:** change ringing length. The light itself still moves timing and pitch.
+- **Drag the selected end-cap:** change ringing length. The light itself still moves timing and pitch.
 - **Shift-drag empty space:** scatter a trail of lights as one undoable gesture.
 - **Right-click a light**, or select it and use the lower bin button, to remove it. The duplicate button adds a copy four steps later.
 - **Undo / Redo:** buttons or Cmd/Ctrl Z / Cmd/Ctrl Shift Z. Each drag or scattered trail is one history entry. Clear and reset are also undoable.
 - **Wave icon:** switch the melody’s material between felt and nylon while preserving the same lights. The speaker toggles master mute; unmuted volume is 35%.
 
-Keyboard: Tab into the space. Enter adds a light; arrows select the first light if none is selected, then move the selection one rhythmic step left/right or one pitch up/down. **[ / ]** shorten/lengthen the selection by one step. Tab can focus the selected endpoint, where left/right resize instead of moving the light. Enter on the endpoint returns focus to the surface. Delete/Backspace removes; Escape deselects; Space plays or pauses. Tab leaves the surface and its selected controls. Individual lights expose descriptive accessible names including their maximum ringing length.
+Keyboard: Tab into the space. Enter adds a light; arrows select the first light if none is selected, then move the selection one rhythmic step left/right or one pitch up/down. **[ / ]** shorten/lengthen the selection by one step. Tab can focus the selected end-cap, where left/right resize instead of moving the light. Small corner marks identify keyboard focus on a light or cap; pointer selection does not show them. Enter on the end-cap returns focus to the surface. Delete/Backspace removes; Escape deselects; Space plays or pauses. Tab leaves the surface and its selected controls. Individual lights expose descriptive accessible names including their maximum ringing length.
 
 The musical rules are deterministic. A single ascending tone axis passes through bass, mallet, melody, and glass materials, with color following material. It uses a subset of each voice’s original range so moving higher never drops the pitch when crossing a material boundary. The starting constellation adapts the original seed phrases to this axis.
 
