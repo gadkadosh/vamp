@@ -1,0 +1,230 @@
+import { expect, test } from "vite-plus/test";
+import {
+  compose,
+  createConstellation,
+  findCollisions,
+  instrumentFor,
+  moveSource,
+  placeSource,
+  snapSource,
+  TONES,
+  toneFor,
+} from "../src/client/playground";
+import type { Constellation, Source } from "../src/client/playground";
+import { DEFAULT_CAMERA, layoutSources, locate, pick, SETTLE_MS } from "../src/client/space";
+import { STEP_COUNT } from "../src/client/score";
+
+const light: Source = { id: 1, step: 3, tone: 7 };
+const documentOf = (...sources: Source[]): Constellation => ({ sources, voice: "keys" });
+
+function add(document: Constellation, source: Source) {
+  const result = placeSource(document, source);
+  expect(result.accepted).toBe(true);
+  return result.document;
+}
+
+test("draft tone positions are continuous while sounding pitches ascend through four materials", () => {
+  expect(new Set(TONES.map((tone) => tone.instrument))).toEqual(
+    new Set(["bass", "mallet", "keys", "glass"]),
+  );
+  for (const [index, tone] of TONES.entries()) {
+    expect(tone.row).toBeGreaterThanOrEqual(0);
+    expect(tone.note.frequency).toBeGreaterThan(index ? TONES[index - 1].note.frequency : 0);
+    expect(toneFor({ ...light, tone: index + 0.2 })).toEqual(tone);
+  }
+});
+
+test("landing snaps both timing and pitch, wraps the loop seam, and is idempotent", () => {
+  const empty = documentOf();
+  const draft = { ...light, step: 3.71, tone: 7.137 };
+  const result = placeSource(empty, draft);
+  expect(result.source).toEqual({ ...draft, step: 4, tone: 7 });
+  expect(result.document.sources).toEqual([result.source]);
+  expect(placeSource(result.document, result.source).document).toBe(result.document);
+  expect(snapSource({ ...draft, step: 31.83 }).step).toBe(0);
+  expect(empty.sources).toEqual([]);
+  expect(draft.step).toBe(3.71);
+  expect(draft.tone).toBe(7.137);
+  expect(compose(empty)).toEqual([]);
+  expect(compose(result.document)).toEqual([
+    { sourceId: 1, instrument: "mallet", row: TONES[7].row, step: 4, length: 1 },
+  ]);
+});
+
+test("felt and nylon allow several different pitches at the same beat, all with audible events", () => {
+  let document = add(documentOf(), { ...light, tone: 10 });
+  document = add(document, { ...light, id: 2, tone: 11.2 });
+  document = add(document, { ...light, id: 3, tone: 13 });
+  const felt = compose(document);
+  expect(felt).toHaveLength(3);
+  expect(felt.map((note) => note.sourceId)).toEqual([1, 2, 3]);
+  expect(new Set(felt.map((note) => note.row)).size).toBe(3);
+  expect(felt.every((note) => note.instrument === "keys" && note.step === 3)).toBe(true);
+  const nylon = compose({ ...document, voice: "nylon" });
+  expect(nylon.every((note) => note.instrument === "nylon")).toBe(true);
+  expect(nylon.map((note) => ({ ...note, instrument: "keys" }))).toEqual(felt);
+});
+
+test("a second bass pitch at an occupied beat is rejected without changing either source", () => {
+  const bass = { ...light, step: 0, tone: 0 };
+  const document = documentOf(bass);
+  const result = placeSource(document, { ...bass, id: 2, step: 31.83, tone: 3 });
+  expect(result.accepted).toBe(false);
+  expect(result.document).toBe(document);
+  expect(result.collisions).toEqual([{ sourceId: bass.id, step: 0 }]);
+  expect(document.sources).toEqual([bass]);
+  expect(add(document, { ...bass, id: 2, step: 1, tone: 3 }).sources).toHaveLength(2);
+});
+
+test("moving into a bass conflict preserves the original document", () => {
+  const a: Source = { ...light, tone: 0, step: 2 };
+  const b: Source = { ...light, id: 2, tone: 3, step: 18 };
+  const document = documentOf(a, b);
+  const moved = placeSource(document, moveSource(a, 16, 0.2));
+  expect(moved.accepted).toBe(false);
+  expect(moved.document).toBe(document);
+  expect(moved.collisions).toEqual([{ sourceId: 2, step: 18 }]);
+  expect(document.sources).toEqual([a, b]);
+  const valid = placeSource(document, moveSource(a, 1, 0.2));
+  expect(valid.accepted).toBe(true);
+  expect(valid.document.sources[0]).toMatchObject({ step: 3, tone: 0 });
+  expect(valid.document.sources[1]).toBe(b);
+});
+
+test("identical sounds flash existing lights rather than keeping silent duplicates, for every material", () => {
+  for (const tone of [0, 7, 10, 17]) {
+    const original = { ...light, tone };
+    const document = documentOf(original);
+    const result = placeSource(document, { ...original, id: 2, step: 3.1, tone: tone + 0.2 });
+    expect(result.accepted).toBe(false);
+    expect(result.document).toBe(document);
+    expect(result.collisions).toEqual([{ sourceId: 1, step: 3 }]);
+  }
+  const copy = { ...light, id: 2, step: light.step + 4 };
+  expect(add(documentOf(light), copy).sources).toEqual([light, copy]);
+  expect(add(documentOf(light), { ...light, id: 2, tone: 10 }).sources).toHaveLength(2);
+});
+
+test("every accepted light contributes exactly one note and one hit target in either view", () => {
+  let document = documentOf();
+  for (let id = 1; id <= 300; id++) {
+    const result = placeSource(document, {
+      id,
+      step: (id * 0.37) % 32,
+      tone: (id * 0.071) % 18,
+    });
+    document = result.document;
+  }
+  const notes = compose(document);
+  expect(document.sources.length).toBeGreaterThan(10);
+  expect(notes).toHaveLength(document.sources.length);
+  for (const source of document.sources) {
+    expect(notes.filter((note) => note.sourceId === source.id)).toEqual([
+      {
+        sourceId: source.id,
+        instrument: instrumentFor(source, document.voice),
+        row: toneFor(source).row,
+        step: source.step,
+        length: toneFor(source).gate,
+      },
+    ]);
+    expect(findCollisions(document, source)).toEqual([]);
+  }
+  for (const view of ["field", "orbit"] as const) {
+    const points = layoutSources(document.sources, view, DEFAULT_CAMERA, {
+      width: 900,
+      height: 720,
+    });
+    expect(points).toHaveLength(document.sources.length);
+    expect(points.map(({ source }) => source.id).sort((a, b) => a - b)).toEqual(
+      document.sources.map(({ id }) => id),
+    );
+  }
+});
+
+test("drafts track fractional pointer positions in both geometries at every camera angle", () => {
+  for (const size of [
+    { width: 1360, height: 560 },
+    { width: 354, height: 440 },
+  ])
+    for (const view of ["field", "orbit"] as const) {
+      for (const camera of [DEFAULT_CAMERA, { yaw: 2, tilt: 0.55 }, { yaw: -4, tilt: 1.25 }])
+        for (let tone = 0.137; tone < TONES.length - 1; tone += 1.17)
+          for (let step = 0.271; step < STEP_COUNT; step += 2.37) {
+            const source = { ...light, step, tone };
+            const position = locate(source, view, camera, size);
+            const picked = pick(position.x, position.y, view, camera, size);
+            expect(picked.step).toBeCloseTo(step, 9);
+            expect(picked.tone).toBeCloseTo(tone, 9);
+          }
+    }
+});
+
+test("landing and bounce animations share the same positions for drawing and hit testing", () => {
+  const size = { width: 1360, height: 560 };
+  for (const view of ["field", "orbit"] as const) {
+    const draft = { ...light, step: 12.34, tone: 9.21 };
+    const landing = snapSource(draft);
+    const motion = { from: draft, to: landing, started: 100 };
+    const projected = (time: number) =>
+      layoutSources([landing], view, DEFAULT_CAMERA, size, motion, time)[0].position;
+    const from = locate(draft, view, DEFAULT_CAMERA, size);
+    const to = locate(landing, view, DEFAULT_CAMERA, size);
+    expect(projected(100).x).toBeCloseTo(from.x, 9);
+    expect(projected(100).y).toBeCloseTo(from.y, 9);
+    expect(projected(100 + SETTLE_MS)).toEqual(to);
+    const halfway = projected(100 + SETTLE_MS / 2);
+    expect(halfway.x).not.toBe(from.x);
+    expect(halfway.x).not.toBe(to.x);
+    expect(halfway.y).not.toBe(from.y);
+    expect(halfway.y).not.toBe(to.y);
+    expect(halfway.x).toBeGreaterThan(Math.min(from.x, to.x));
+    expect(halfway.x).toBeLessThan(Math.max(from.x, to.x));
+    const bounce = layoutSources(
+      [light],
+      view,
+      DEFAULT_CAMERA,
+      size,
+      { from: draft, to: light, started: 100 },
+      100 + SETTLE_MS,
+    )[0];
+    expect(bounce.position).toEqual(locate(light, view, DEFAULT_CAMERA, size));
+  }
+});
+
+test("out-of-bounds picking stays finite and timing nudges wrap without moving the pitch axis", () => {
+  for (const view of ["field", "orbit"] as const)
+    for (const x of [-500, 0, 177, 354, 1000])
+      for (const y of [-500, 0, 220, 440, 1000]) {
+        const position = pick(x, y, view, { yaw: 2, tilt: 0.55 }, { width: 354, height: 440 });
+        expect(Number.isFinite(position.step)).toBe(true);
+        expect(position.step).toBeGreaterThanOrEqual(0);
+        expect(position.step).toBeLessThan(STEP_COUNT);
+        expect(Number.isFinite(position.tone)).toBe(true);
+        expect(position.tone).toBeGreaterThanOrEqual(0);
+        expect(position.tone).toBeLessThanOrEqual(TONES.length - 1);
+      }
+  expect(moveSource({ ...light, step: 0, tone: 0.1 }, -1, 0)).toMatchObject({
+    step: 31,
+    tone: 0.1,
+  });
+});
+
+test("the seed has no conflicting or silent lights and projection never changes the score", () => {
+  const document = createConstellation();
+  const before = structuredClone(document);
+  const score = compose(document);
+  expect(document).toEqual(createConstellation());
+  expect(score).toHaveLength(document.sources.length);
+  expect(new Set(score.map((note) => note.instrument))).toEqual(
+    new Set(["bass", "mallet", "keys", "glass"]),
+  );
+  for (const source of document.sources) {
+    expect(findCollisions(document, source)).toEqual([]);
+    expect(instrumentFor(source, document.voice)).toBe(toneFor(source).instrument);
+    locate(source, "field", DEFAULT_CAMERA, { width: 1000, height: 600 });
+    locate(source, "orbit", { yaw: 2, tilt: 1 }, { width: 1000, height: 600 });
+  }
+  expect(document).toEqual(before);
+  expect(compose(document)).toEqual(score);
+});

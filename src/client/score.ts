@@ -97,12 +97,27 @@ export const INSTRUMENTS = [
   },
 ] as const;
 export type InstrumentId = (typeof INSTRUMENTS)[number]["id"];
+// Spatial event playback allows chords; the original grid's editing modes stay unchanged.
+export const VOICE_POLYPHONY: Record<InstrumentId, boolean> = {
+  mallet: true,
+  keys: true,
+  nylon: true,
+  bass: false,
+  glass: true,
+};
 export const DEFAULT_ENABLED: Record<InstrumentId, boolean> = {
   mallet: true,
   keys: true,
   nylon: false,
   bass: true,
   glass: true,
+};
+export type TimedNote = {
+  instrument: InstrumentId;
+  row: number;
+  step: number;
+  length: number;
+  gain?: number;
 };
 export type Pattern = boolean[][];
 export type Patterns = Record<InstrumentId, Pattern>;

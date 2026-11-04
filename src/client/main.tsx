@@ -1,170 +1,531 @@
-import { StrictMode, useEffect, useRef, useState } from "react";
+import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { PatternGrid } from "./PatternGrid";
+import { PointSpace } from "./PointSpace";
 import {
-  createSeedPatterns,
-  DEFAULT_VOLUME,
-  DEFAULT_ENABLED,
-  INSTRUMENTS,
-  TEMPO,
-  togglePatternCell,
-} from "./score";
-import type { InstrumentId } from "./score";
+  compose,
+  createConstellation,
+  placeSource,
+  sourceLabel,
+  toneFor,
+  wrapStep,
+} from "./playground";
+import type { CollisionFeedback, Constellation, Placement, Source, View } from "./playground";
 import { Sequencer } from "./sequencer";
 import "./style.css";
 
+type History = { present: Constellation; past: Constellation[]; future: Constellation[] };
+type IconName =
+  | "play"
+  | "pause"
+  | "undo"
+  | "redo"
+  | "clear"
+  | "seed"
+  | "help"
+  | "sound"
+  | "mute"
+  | "duplicate"
+  | "voice";
+function Icon({ name }: { name: IconName }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {name === "play" ? (
+        <path d="m9 5 10 7-10 7Z" fill="currentColor" stroke="none" />
+      ) : name === "pause" ? (
+        <path d="M9 6v12M16 6v12" strokeWidth="3" />
+      ) : name === "undo" ? (
+        <path d="m8 5-5 5 5 5M3 10h10a6 6 0 0 1 0 12" />
+      ) : name === "redo" ? (
+        <path d="m16 5 5 5-5 5m5-5H11a6 6 0 0 0 0 12" />
+      ) : name === "clear" ? (
+        <>
+          <path d="M4 7h16M9 3h6M6 7l1 14h10l1-14M10 11v6m4-6v6" />
+        </>
+      ) : name === "seed" ? (
+        <>
+          <path d="M4 10a8 8 0 1 1 0 5m0-11v6h6" />
+          <circle cx="12" cy="12" r="1.5" />
+        </>
+      ) : name === "help" ? (
+        <>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M9 8a3 3 0 0 1 6 1c0 2-3 2-3 4m0 4h.01" />
+        </>
+      ) : name === "duplicate" ? (
+        <>
+          <rect x="8" y="8" width="12" height="12" rx="3" />
+          <path d="M15 8V4H4v11h4" />
+        </>
+      ) : name === "voice" ? (
+        <>
+          <path d="M3 12c3-14 5 14 9 0s6 14 9 0" />
+        </>
+      ) : (
+        <>
+          <path d="m10 5-5 4H2v6h3l5 4Z" />
+          {name === "sound" ? (
+            <path d="M14 8a6 6 0 0 1 0 8m4-12a11 11 0 0 1 0 16" />
+          ) : (
+            <path d="m15 9 6 6m0-6-6 6" />
+          )}
+        </>
+      )}
+    </svg>
+  );
+}
+
 function App() {
-  const [patterns, setPatterns] = useState(createSeedPatterns);
-  const patternsRef = useRef(patterns);
-  const audio = useRef<Sequencer | null>(null);
+  const [history, setHistory] = useState<History>(() => ({
+    present: createConstellation(),
+    past: [],
+    future: [],
+  }));
+  const historyRef = useRef(history);
+  const document = history.present;
+  const score = useMemo(() => compose(document), [document]);
+  const scoreRef = useRef(score);
+  const engine = useRef<Sequencer | null>(null);
+  const [view, setView] = useState<View>("volume");
+  const [selectedId, setSelected] = useState<number | null>(null);
+  const selected = document.sources.find((source) => source.id === selectedId);
+  const nextSource = useRef(Math.max(...document.sources.map((source) => source.id), 0) + 1);
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [volume, setVolume] = useState(DEFAULT_VOLUME);
-  const [enabled, setEnabled] = useState(DEFAULT_ENABLED);
-  const [currentStep, setCurrentStep] = useState<number | null>(null);
+  const [muted, setMuted] = useState(false);
+  const [help, setHelp] = useState(false);
   const [error, setError] = useState("");
+  const [feedback, setFeedback] = useState<CollisionFeedback | null>(null);
+  const [message, setMessage] = useState(
+    "A new experiment. Try Breathe to give the starting phrase depth.",
+  );
 
   useEffect(() => {
-    const sequencer = new Sequencer(() => patternsRef.current, setCurrentStep);
-    audio.current = sequencer;
+    const sequencer = new Sequencer(
+      () => scoreRef.current,
+      () => {},
+    );
+    engine.current = sequencer;
     return () => {
       sequencer.dispose();
-      audio.current = null;
+      engine.current = null;
     };
+  }, []);
+  useEffect(() => {
+    scoreRef.current = score;
+    engine.current?.setEnabled("keys", document.voice === "keys");
+    engine.current?.setEnabled("nylon", document.voice === "nylon");
+  }, [score, document.voice]);
+
+  function apply(next: History) {
+    historyRef.current = next;
+    setHistory(next);
+  }
+  function edit(change: (document: Constellation) => Constellation, remember = true) {
+    const previous = historyRef.current;
+    const next = change(previous.present);
+    if (next === previous.present) return next;
+    apply({
+      present: next,
+      past: remember ? [...previous.past, previous.present].slice(-60) : previous.past,
+      future: [],
+    });
+    return next;
+  }
+  function place(candidate: Source, remember = true): Placement {
+    const current = historyRef.current.present;
+    const result = placeSource(current, candidate);
+    if (result.accepted) {
+      edit(() => result.document, remember);
+      setFeedback(null);
+      setSelected(result.source.id);
+      if (result.document !== current) setMessage("A little light, settled into the music.");
+    } else {
+      setFeedback({ collisions: result.collisions, started: performance.now() });
+      setMessage(
+        toneFor(candidate).instrument === "bass"
+          ? "That bass beat is occupied. Try another landing."
+          : "That sound is already here. Try another pitch or beat.",
+      );
+      if (!current.sources.some(({ id }) => id === candidate.id))
+        setSelected(result.collisions[0].sourceId);
+    }
+    return result;
+  }
+  function commitGesture(before: Constellation) {
+    const current = historyRef.current;
+    if (before === current.present) return;
+    apply({ ...current, past: [...current.past, before].slice(-60), future: [] });
+  }
+  function undo() {
+    const current = historyRef.current;
+    if (!current.past.length) return;
+    apply({
+      present: current.past[current.past.length - 1],
+      past: current.past.slice(0, -1),
+      future: [current.present, ...current.future],
+    });
+    setFeedback(null);
+    setMessage("One gesture back.");
+  }
+  function redo() {
+    const current = historyRef.current;
+    if (!current.future.length) return;
+    apply({
+      present: current.future[0],
+      past: [...current.past, current.present],
+      future: current.future.slice(1),
+    });
+    setFeedback(null);
+    setMessage("One gesture forward.");
+  }
+  useEffect(() => {
+    function keyDown(event: globalThis.KeyboardEvent) {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "z") return;
+      event.preventDefault();
+      if (event.shiftKey) redo();
+      else undo();
+    }
+    window.addEventListener("keydown", keyDown);
+    return () => window.removeEventListener("keydown", keyDown);
   }, []);
 
   async function togglePlayback() {
-    if (!audio.current || busy) return;
+    if (!engine.current || busy) return;
     setBusy(true);
     setError("");
     try {
-      if (playing) await audio.current.pause();
-      else await audio.current.play();
+      if (playing) await engine.current.pause();
+      else await engine.current.play();
       setPlaying(!playing);
     } catch {
-      setError("Audio couldn’t start. Please try Play again in a browser with Web Audio support.");
+      setError("Audio couldn’t start. Please try Play again.");
     } finally {
       setBusy(false);
     }
   }
 
-  function toggleCell(instrument: InstrumentId, row: number, step: number) {
-    const next = togglePatternCell(patternsRef.current, instrument, row, step);
-    patternsRef.current = next;
-    setPatterns(next);
-  }
-
-  function applyEnabled(next: Record<InstrumentId, boolean>) {
-    setEnabled(next);
-    for (const { id } of INSTRUMENTS) audio.current?.setEnabled(id, next[id]);
-  }
-
-  function toggleSound(instrument: InstrumentId) {
-    applyEnabled({ ...enabled, [instrument]: !enabled[instrument] });
-  }
-
-  function audition(instrument: InstrumentId | "ensemble") {
-    const next = { ...DEFAULT_ENABLED };
-    if (instrument !== "ensemble") {
-      for (const { id } of INSTRUMENTS) next[id] = id === instrument;
-    }
-    applyEnabled(next);
-    if (!playing && !busy) void togglePlayback();
-  }
-
   return (
-    <main>
+    <main className={`app view-${view}`}>
       <header className="masthead">
         <a className="wordmark" href="/" aria-label="Vamp home">
           vamp<span>·</span>
         </a>
         <span className="edition">
-          <span className="status-dot" /> Local prototype
+          Open-ended instruments <i>/</i> study 03
         </span>
+        <nav className="view-switch" aria-label="Spatial experiments">
+          <button
+            aria-pressed={view === "field"}
+            onClick={() => {
+              setView("field");
+              setMessage("The same sounds, laid out in a field.");
+            }}
+          >
+            <span className="view-glyph field-glyph">∴</span>Constellation
+          </button>
+          <button
+            aria-pressed={view === "orbit"}
+            onClick={() => {
+              setView("orbit");
+              setMessage("The same constellation, wrapped around a loop. Drag ⌖ to turn it.");
+            }}
+          >
+            <span className="view-glyph">◎</span>Orbit
+          </button>
+          <button
+            aria-pressed={view === "volume"}
+            onClick={() => {
+              setView("volume");
+              setMessage("Depth is intensity. Try Breathe, then pull a light out of the quiet.");
+            }}
+          >
+            <span className="view-glyph">◇</span>Volume <span className="lab-tag">LAB</span>
+          </button>
+        </nav>
+        <div className="header-tools">
+          <button
+            className="icon-button"
+            title="Undo · ⌘/Ctrl Z"
+            aria-label="Undo"
+            disabled={!history.past.length}
+            onClick={undo}
+          >
+            <Icon name="undo" />
+          </button>
+          <button
+            className="icon-button"
+            title="Redo · ⌘/Ctrl Shift Z"
+            aria-label="Redo"
+            disabled={!history.future.length}
+            onClick={redo}
+          >
+            <Icon name="redo" />
+          </button>
+          <span className="tool-divider" />
+          <button
+            className="icon-button"
+            title="Start with an empty space · undoable"
+            aria-label="Clear space"
+            disabled={!document.sources.length}
+            onClick={() => {
+              edit((previous) => ({ ...previous, sources: [] }));
+              setSelected(null);
+              setFeedback(null);
+              setMessage("An empty space. Every light you place becomes part of the loop.");
+            }}
+          >
+            <Icon name="clear" />
+          </button>
+          <button
+            className="icon-button"
+            title="Return to the starting constellation · undoable"
+            aria-label="Reset constellation"
+            onClick={() => {
+              edit(() => createConstellation());
+              setSelected(null);
+              setFeedback(null);
+              setMessage("Back to the first constellation.");
+            }}
+          >
+            <Icon name="seed" />
+          </button>
+          <button
+            className={`icon-button${help ? " active" : ""}`}
+            title="Discover the rules"
+            aria-label="Discover the rules"
+            aria-expanded={help}
+            aria-controls="discovery"
+            onClick={() => setHelp(!help)}
+          >
+            <Icon name="help" />
+          </button>
+        </div>
       </header>
 
-      <section className="intro" aria-labelledby="title">
-        <p className="eyebrow">A small musical experiment</p>
-        <h1 id="title">
-          Make a little space
-          <br />
-          for a melody.
-        </h1>
-        <p className="description">
-          Four different roles, one small ensemble.
-          <br />
-          Listen alone, then bring them together.
-        </p>
-      </section>
-
-      <section className="instrument" aria-label="Sequencer">
-        <div className="transport">
-          <button className="play-button" onClick={togglePlayback} disabled={busy}>
-            <svg viewBox="0 0 20 20" aria-hidden="true">
-              {playing ? <path d="M5 4h3v12H5zm7 0h3v12h-3z" /> : <path d="M6 3.5 16 10 6 16.5z" />}
-            </svg>
-            {playing ? "Pause" : "Play"}
-          </button>
-          <div className="tempo">
-            <strong>{TEMPO}</strong> BPM<span>4/4 · two measures</span>
-          </div>
-          <button className="ensemble-button" onClick={() => audition("ensemble")}>
-            Ensemble
-          </button>
-          <div className="level-control master-volume">
-            <label htmlFor="volume">Volume</label>
-            <input
-              id="volume"
-              type="range"
-              min="0"
-              max="100"
-              value={Math.round(volume * 100)}
-              onChange={(event) => {
-                const value = Number(event.target.value) / 100;
-                setVolume(value);
-                audio.current?.setVolume(value);
-              }}
-            />
-            <output htmlFor="volume">{Math.round(volume * 100)}%</output>
-          </div>
+      <section className="instrument-space" aria-label="Abstract musical instrument">
+        <div className="space-intro">
+          <p className="eyebrow">
+            {view === "volume"
+              ? "03 — A playable volume / experimental"
+              : view === "field"
+                ? "01 — A constellation of small decisions"
+                : "02 — The same idea, in another dimension"}
+          </p>
+          <h1>
+            {view === "volume"
+              ? "Pull a little music out of the quiet."
+              : view === "field"
+                ? "What happens if you leave a little light?"
+                : "A little gravity. A little repetition."}
+          </h1>
+          <p>
+            {view === "volume"
+              ? "Time across. Pitch above. A whole new dimension of feeling."
+              : view === "field"
+                ? "Place one. Move it. Leave another."
+                : "Place a light in the space. Then move it somewhere else."}
+          </p>
         </div>
-
-        {INSTRUMENTS.map((instrument) => (
-          <PatternGrid
-            key={instrument.id}
-            id={instrument.id}
-            name={instrument.name}
-            description={instrument.description}
-            notes={instrument.notes}
-            monophonic={instrument.mode === "mono"}
-            pattern={patterns[instrument.id]}
-            currentStep={currentStep}
-            enabled={enabled[instrument.id]}
-            onToggleSound={() => toggleSound(instrument.id)}
-            onListenAlone={() => audition(instrument.id)}
-            onToggleCell={(row, step) => toggleCell(instrument.id, row, step)}
+        <div className="surface-container">
+          <PointSpace
+            document={document}
+            score={score}
+            selected={selected?.id ?? null}
+            view={view}
+            playing={playing}
+            feedback={feedback}
+            onSelect={setSelected}
+            onPlace={place}
+            onEdit={edit}
+            onCommit={commitGesture}
+            nextId={() => nextSource.current++}
+            getProgress={() => engine.current?.getPosition() ?? null}
+            onPlayback={() => void togglePlayback()}
           />
-        ))}
-
-        <div className="instrument-footer">
-          <p id="grid-help">
-            Click a cell to add or remove a note.<span> Arrow keys to move, space to toggle.</span>
-          </p>
-          <span className="sound-label">
-            <span className="sound-dot" /> One shared loop
-          </span>
+          <div className="surface-caption">
+            <span className="live-dot" />
+            {playing ? "A shared loop, unfolding." : "The space is listening."}
+          </div>
+          <div className="gesture-hint">
+            {view === "volume"
+              ? "⌖ Turn the volume · Shift-drag to scatter"
+              : view === "orbit"
+                ? "Drag ⌖ to turn · Shift-drag to scatter"
+                : "Click to leave a light · Shift-drag to scatter"}
+          </div>
+          {document.sources.length === 0 && (
+            <div className="empty-invitation" aria-hidden="true">
+              <span>＋</span>Somewhere is a good place to start.
+            </div>
+          )}
         </div>
-        {error && (
-          <p className="error" role="alert">
-            {error}
-          </p>
+        {help && (
+          <aside className="discovery" id="discovery">
+            <button
+              className="close-discovery"
+              aria-label="Close discovery guide"
+              onClick={() => setHelp(false)}
+            >
+              ×
+            </button>
+            <p className="eyebrow">A few things to discover</p>
+            <h2>It isn’t random.</h2>
+            <p>Every light leaves a sound in the loop. Nothing changes on its own.</p>
+            <dl>
+              <div>
+                <dt>Place & move</dt>
+                <dd>
+                  {view === "volume"
+                    ? "Left to right is when. Bottom to top is pitch. Depth is intensity: whisper at the back, flare at the front. Choose where to write with Whisper, Glow, or Flare."
+                    : view === "field"
+                      ? "Left to right is when. Bottom to top is low to high."
+                      : "Around the circle is when. Out from the center is low to high."}{" "}
+                  Drag freely. A small landing point previews the beat and pitch; release to settle
+                  onto both. The color follows the sound.
+                </dd>
+              </div>
+              {view === "volume" && (
+                <div>
+                  <dt>Give depth a job</dt>
+                  <dd>
+                    Try Breathe for an undoable wave of dynamics. Turn on Pull depth, then drag a
+                    light up to bring it forward and make it louder; down to make it softer.
+                    Shift-arrows do the same. Flatten lets you compose without perspective,
+                    preserving every intensity. The compass turns the view, never the music.
+                  </dd>
+                </div>
+              )}
+              <div>
+                <dt>Every light has a voice</dt>
+                <dd>
+                  Felt and nylon can form chords. Bass has one note per beat: an occupied landing
+                  flashes, and an invalid drag returns home. Identical sounds also flash instead of
+                  creating a silent duplicate.
+                </dd>
+              </div>
+              <div>
+                <dt>Make a mark</dt>
+                <dd>
+                  Shift-drag through empty space to leave a trail of lights. There’s no fixed number
+                  you have to work with.
+                </dd>
+              </div>
+              <div>
+                <dt>Take something away</dt>
+                <dd>
+                  Select a light and use the bin below, or right-click it. Undo brings it back.
+                </dd>
+              </div>
+            </dl>
+            <p className="discovery-foot">
+              All notes share a scale. No light is silently ignored. Tab into the space for keyboard
+              controls.
+            </p>
+          </aside>
         )}
       </section>
 
-      <footer className="page-footer">
-        <span>A loop to get lost in.</span>
-        <span>Just this browser. Nothing is saved.</span>
+      <footer className="instrument-footer">
+        <div className="selection-tools">
+          {selected ? (
+            <>
+              <span className="selection-dot" />
+              {view === "volume" && (
+                <span className="energy-readout">
+                  {Math.round((selected.energy ?? 0.5) * 100)}% intensity
+                </span>
+              )}
+              <button
+                className="icon-button"
+                title="Duplicate light"
+                aria-label="Duplicate selected light"
+                onClick={() => {
+                  const copy = {
+                    ...selected,
+                    id: nextSource.current++,
+                    step: wrapStep(selected.step + 4),
+                  };
+                  place(copy);
+                }}
+              >
+                <Icon name="duplicate" />
+              </button>
+              <button
+                className="icon-button"
+                title="Remove light · Delete key"
+                aria-label="Remove selected light"
+                onClick={() => {
+                  edit((previous) => ({
+                    ...previous,
+                    sources: previous.sources.filter((source) => source.id !== selected.id),
+                  }));
+                  setSelected(null);
+                }}
+              >
+                <Icon name="clear" />
+              </button>
+            </>
+          ) : (
+            <span className="selection-prompt">A light is something you can touch.</span>
+          )}
+        </div>
+        <div className="playback-controls">
+          <button className="play-button" disabled={busy} onClick={() => void togglePlayback()}>
+            <Icon name={playing ? "pause" : "play"} />
+            <span>{busy ? "One moment" : playing ? "Pause" : "Play & discover"}</span>
+            <span className={`play-indicator${playing ? " playing" : ""}`} />
+          </button>
+        </div>
+        <div className="listening-tools">
+          <span className="source-count">
+            {document.sources.length} {document.sources.length === 1 ? "light" : "lights"} <i>·</i>{" "}
+            one loop
+          </span>
+          <span className="tool-divider" />
+          <button
+            className={`icon-button voice-button${document.voice === "nylon" ? " active" : ""}`}
+            title={`Melody material: ${document.voice === "keys" ? "felt" : "nylon"}. Click to switch.`}
+            aria-label="Use nylon melody instead of felt"
+            aria-pressed={document.voice === "nylon"}
+            onClick={() => {
+              edit((previous) => ({
+                ...previous,
+                voice: previous.voice === "keys" ? "nylon" : "keys",
+              }));
+              setMessage("The same lights, with a different melodic texture.");
+            }}
+          >
+            <Icon name="voice" />
+          </button>
+          <button
+            className="icon-button"
+            title={muted ? "Unmute" : "Mute"}
+            aria-label="Mute audio"
+            aria-pressed={muted}
+            onClick={() => {
+              engine.current?.setVolume(muted ? 0.35 : 0);
+              setMuted(!muted);
+            }}
+          >
+            <Icon name={muted ? "mute" : "sound"} />
+          </button>
+        </div>
       </footer>
+      <div className="bottom-note">
+        <span role="status">{error || message}</span>
+        <span>Just this visit. Nothing is saved.</span>
+      </div>
+      <p className="sr-only" aria-live="polite">
+        {selected ? sourceLabel(selected, document.voice) : "No light selected."}
+      </p>
     </main>
   );
 }

@@ -3,13 +3,14 @@ export function scheduleMallet(
   output: AudioNode,
   frequency: number,
   time: number,
+  gain = 1,
 ) {
   const oscillator = context.createOscillator();
   const envelope = context.createGain();
   oscillator.type = "sine";
   oscillator.frequency.value = frequency;
   envelope.gain.setValueAtTime(0, time);
-  envelope.gain.linearRampToValueAtTime(0.12, time + 0.02);
+  envelope.gain.linearRampToValueAtTime(0.12 * gain, time + 0.02);
   envelope.gain.exponentialRampToValueAtTime(0.0001, time + 0.85);
   envelope.gain.linearRampToValueAtTime(0, time + 0.9);
   oscillator.connect(envelope).connect(output);
@@ -41,6 +42,7 @@ function ringPartials(
   frequency: number,
   time: number,
   partials: readonly (readonly [ratio: number, peak: number, duration: number])[],
+  gain: number,
 ) {
   const gate = context.createGain();
   gate.connect(output);
@@ -49,7 +51,7 @@ function ringPartials(
     const envelope = context.createGain();
     oscillator.frequency.value = frequency * ratio;
     envelope.gain.setValueAtTime(0, time);
-    envelope.gain.linearRampToValueAtTime(peak, time + 0.008);
+    envelope.gain.linearRampToValueAtTime(peak * gain, time + 0.008);
     envelope.gain.exponentialRampToValueAtTime(0.0001, time + duration);
     envelope.gain.linearRampToValueAtTime(0, time + duration + 0.03);
     oscillator.connect(envelope).connect(gate);
@@ -70,13 +72,21 @@ export function startFeltKeys(
   output: AudioNode,
   frequency: number,
   time: number,
+  gain = 1,
 ) {
-  return ringPartials(context, output, frequency, time, [
-    [1, 0.065, 2.4],
-    [2.003, 0.014, 0.9],
-    [3.009, 0.0045, 0.5],
-    [4.02, 0.0015, 0.3],
-  ]);
+  return ringPartials(
+    context,
+    output,
+    frequency,
+    time,
+    [
+      [1, 0.065, 2.4],
+      [2.003, 0.014, 0.9],
+      [3.009, 0.0045, 0.5],
+      [4.02, 0.0015, 0.3],
+    ],
+    gain,
+  );
 }
 
 export function scheduleGlass(
@@ -84,13 +94,21 @@ export function scheduleGlass(
   output: AudioNode,
   frequency: number,
   time: number,
+  gain = 1,
 ) {
   // Inharmonic modes give these high accents a glass-like, rather than keyboard, color.
-  ringPartials(context, output, frequency, time, [
-    [1, 0.035, 2.8],
-    [2.76, 0.008, 0.9],
-    [5.4, 0.002, 0.3],
-  ]);
+  ringPartials(
+    context,
+    output,
+    frequency,
+    time,
+    [
+      [1, 0.035, 2.8],
+      [2.76, 0.008, 0.9],
+      [5.4, 0.002, 0.3],
+    ],
+    gain,
+  );
 }
 
 const STRINGS = {
@@ -161,6 +179,7 @@ function startPluck(
   frequency: number,
   time: number,
   kind: StringKind,
+  gain: number,
 ) {
   const voice = STRINGS[kind];
   const source = context.createBufferSource();
@@ -172,8 +191,8 @@ function startPluck(
   body.frequency.value = voice.cutoff;
   body.Q.value = 0.5;
   envelope.gain.setValueAtTime(0, time);
-  envelope.gain.linearRampToValueAtTime(voice.peak, time + voice.attack);
-  envelope.gain.setValueAtTime(voice.peak, time + voice.seconds - 0.08);
+  envelope.gain.linearRampToValueAtTime(voice.peak * gain, time + voice.attack);
+  envelope.gain.setValueAtTime(voice.peak * gain, time + voice.seconds - 0.08);
   envelope.gain.linearRampToValueAtTime(0, time + voice.seconds);
   source.connect(body).connect(envelope).connect(gate).connect(output);
   source.start(time);
@@ -192,8 +211,9 @@ export function startBass(
   output: AudioNode,
   frequency: number,
   time: number,
+  gain = 1,
 ) {
-  return startPluck(context, output, frequency, time, "bass");
+  return startPluck(context, output, frequency, time, "bass", gain);
 }
 
 export function startNylon(
@@ -201,6 +221,7 @@ export function startNylon(
   output: AudioNode,
   frequency: number,
   time: number,
+  gain = 1,
 ) {
-  return startPluck(context, output, frequency, time, "nylon");
+  return startPluck(context, output, frequency, time, "nylon", gain);
 }

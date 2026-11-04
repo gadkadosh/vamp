@@ -7,9 +7,11 @@ import {
   STEP_SECONDS,
   togglePatternCell,
 } from "../src/client/score";
-import type { InstrumentId, Patterns } from "../src/client/score";
+import type { InstrumentId, Patterns, TimedNote } from "../src/client/score";
+import { compose, gainForEnergy } from "../src/client/playground";
+import type { Constellation } from "../src/client/playground";
 import { Sequencer } from "../src/client/sequencer";
-import { carriers, channel, plucks, TestAudioContext } from "./audio-context";
+import { carriers, channel, plucks, routesTo, TestAudioContext } from "./audio-context";
 
 let sequencer: Sequencer | null;
 const onStep = vi.fn();
@@ -71,6 +73,184 @@ function sources(context: TestAudioContext, id: InstrumentId) {
 }
 
 const monoIds = ["keys", "nylon", "bass"] as const;
+
+async function startTimed(getNotes: () => TimedNote[]) {
+  const engine = new Sequencer(getNotes, onStep);
+  sequencer = engine;
+  await engine.play();
+  return { engine, context: TestAudioContext.instances.at(-1)! };
+}
+
+const floatingLight: Constellation = {
+  voice: "keys",
+  sources: [{ id: 1, step: 2.37, tone: 7.13 }],
+};
+
+test.each([
+  ["bass", 2, "keys"],
+  ["mallet", 7, "keys"],
+  ["keys", 11, "keys"],
+  ["nylon", 11, "nylon"],
+  ["glass", 17, "keys"],
+] as const)(
+  "volume depth reaches the actual %s envelope without moving its onset",
+  async (id, tone, voice) => {
+    const notes = compose({
+      voice,
+      sources: [
+        { id: 1, step: 0, tone, energy: 0.1 },
+        { id: 2, step: 4, tone, energy: 0.95 },
+      ],
+    });
+    const { context } = await startTimed(() => notes);
+    runUntil(context, 0.9);
+    const envelopes = context.gains.filter((gain) => routesTo(gain, channel(context, id)));
+    const peakAt = (onset: number) =>
+      Math.max(
+        ...envelopes
+          .flatMap((node) => node.gain.linearRampToValueAtTime.mock.calls)
+          .filter(([value, time]) => value > 0 && time > onset && time < onset + 0.03)
+          .map(([value]) => value),
+      );
+    const soft = peakAt(0.05),
+      loud = peakAt(0.05 + 4 * STEP_SECONDS);
+    expect(soft).toBeGreaterThan(0);
+    expect(loud / soft).toBeCloseTo(gainForEnergy(0.95) / gainForEnergy(0.1), 10);
+    const starts = sources(context, id).map((source) => source.start.mock.calls[0][0]);
+    expect(starts).toContain(0.05);
+    expect(starts).toContain(0.05 + 4 * STEP_SECONDS);
+  },
+);
+
+test("magnetic lights always schedule on the beat, including raw draft inputs", async () => {
+  const { context } = await startTimed(() => compose(floatingLight));
+  runUntil(context, 0.6);
+  const strikes = carriers(context, "mallet");
+  expect(strikes).toHaveLength(1);
+  expect(strikes[0].start.mock.calls[0][0]).toBeCloseTo(0.05 + 2 * STEP_SECONDS, 10);
+});
+
+test("event scheduling never duplicates buffered strikes when paused and resumed", async () => {
+  const notes = compose({
+    ...floatingLight,
+    sources: [{ ...floatingLight.sources[0], step: 0.25 }],
+  });
+  const { engine, context } = await startTimed(() => notes);
+  expect(carriers(context, "mallet")).toHaveLength(1);
+  runUntil(context, 0.3);
+  await engine.pause();
+  vi.advanceTimersByTime(2000);
+  await engine.play();
+  runUntil(context, 0.6);
+  expect(carriers(context, "mallet")).toHaveLength(1);
+});
+
+test("event timelines wrap without drift and skip missed loops instead of catching up in a burst", async () => {
+  const { context } = await startTimed(() => compose(floatingLight));
+  const loop = 32 * STEP_SECONDS;
+  runUntil(context, loop + 0.6);
+  const strikes = carriers(context, "mallet");
+  expect(strikes).toHaveLength(2);
+  expect(strikes[1].start.mock.calls[0][0] - strikes[0].start.mock.calls[0][0]).toBeCloseTo(
+    loop,
+    10,
+  );
+  const before = strikes.length;
+  advance(context, 40);
+  const added = carriers(context, "mallet").slice(before);
+  expect(added.length).toBeLessThanOrEqual(1);
+  expect(added.every((source) => source.start.mock.calls[0][0] >= 40)).toBe(true);
+});
+
+test("live timing edits use the next unscheduled audio window", async () => {
+  let document: Constellation = {
+    ...floatingLight,
+    sources: [{ ...floatingLight.sources[0], step: 10.37 }],
+  };
+  const { context } = await startTimed(() => compose(document));
+  document = { ...document, sources: [] };
+  runUntil(context, 2);
+  expect(carriers(context, "mallet")).toHaveLength(0);
+  document = {
+    ...floatingLight,
+    sources: [{ ...floatingLight.sources[0], step: 16.37 }],
+  };
+  runUntil(context, 3.2);
+  expect(carriers(context, "mallet")).toHaveLength(1);
+  expect(carriers(context, "mallet")[0].start.mock.calls[0][0]).toBeCloseTo(
+    0.05 + 16 * STEP_SECONDS,
+    10,
+  );
+  document = { ...document, sources: [{ ...floatingLight.sources[0], step: 18.37 }] };
+  runUntil(context, 32 * STEP_SECONDS + 3.2);
+  expect(carriers(context, "mallet").at(-1)!.start.mock.calls[0][0]).toBeCloseTo(
+    0.05 + (32 + 18) * STEP_SECONDS,
+    10,
+  );
+});
+
+test("fractional gates can ring across the loop seam without being cut short", async () => {
+  const notes: TimedNote[] = [{ instrument: "bass", row: 5, step: 31.75, length: 4 }];
+  const { context } = await startTimed(() => notes);
+  runUntil(context, 0.05 + 36 * STEP_SECONDS);
+  const strings = plucks(context, "bass");
+  expect(strings).toHaveLength(1);
+  expect(strings[0].stop.mock.calls.at(-1)![0]).toBeCloseTo(0.05 + 35.75 * STEP_SECONDS, 10);
+});
+
+test("bass notes damp on the next onset and at their exact gate end", async () => {
+  const notes: TimedNote[] = [
+    { instrument: "bass", row: 0, step: 0.37, length: 3 },
+    { instrument: "bass", row: 1, step: 0.6, length: 0.3 },
+  ];
+  const { context } = await startTimed(() => notes);
+  runUntil(context, 0.4);
+  const strings = plucks(context, "bass");
+  expect(strings).toHaveLength(2);
+  expect(strings[0].stop).toHaveBeenCalledWith(0.05 + 0.6 * STEP_SECONDS);
+  expect(strings[1].stop.mock.calls.at(-1)![0]).toBeCloseTo(0.05 + (0.6 + 0.3) * STEP_SECONDS, 10);
+});
+
+test("felt and nylon chords keep independent gates when simultaneous and later notes overlap", async () => {
+  for (const id of ["keys", "nylon"] as const) {
+    sequencer?.dispose();
+    const notes: TimedNote[] = [
+      { instrument: id, row: 0, step: 0, length: 3 },
+      { instrument: id, row: 1, step: 0, length: 1 },
+      { instrument: id, row: 2, step: 1, length: 2 },
+    ];
+    const { engine, context } = await startTimed(() => notes);
+    engine.setEnabled(id, true);
+    runUntil(context, 0.3);
+    const fundamentals =
+      id === "keys"
+        ? carriers(context, id).filter((_, index) => index % 4 === 0)
+        : plucks(context, id);
+    expect(fundamentals).toHaveLength(3);
+    expect(fundamentals[0].start).toHaveBeenCalledWith(0.05);
+    expect(fundamentals[1].start).toHaveBeenCalledWith(0.05);
+    expect(fundamentals[2].start.mock.calls[0][0]).toBeCloseTo(0.05 + STEP_SECONDS, 10);
+    // The first sound still has only its natural source stop, not a premature damper.
+    expect(fundamentals[0].stop).toHaveBeenCalledTimes(1);
+    expect(fundamentals[1].stop.mock.calls.at(-1)![0]).toBeCloseTo(0.05 + STEP_SECONDS, 10);
+    runUntil(context, 0.7);
+    expect(fundamentals[0].stop.mock.calls.at(-1)![0]).toBeCloseTo(0.05 + 3 * STEP_SECONDS, 10);
+    expect(fundamentals[2].stop.mock.calls.at(-1)![0]).toBeCloseTo(0.05 + 3 * STEP_SECONDS, 10);
+  }
+});
+
+test("the spatial playhead reads the audio clock, wraps the loop, and holds while paused", async () => {
+  const { engine, context } = await start(emptyPatterns());
+  expect(engine.getPosition()).toBeNull();
+  advance(context, 0.05 + STEP_SECONDS * 3.25);
+  expect(engine.getPosition()).toBeCloseTo(3.25);
+  await engine.pause();
+  vi.advanceTimersByTime(1000);
+  expect(engine.getPosition()).toBeCloseTo(3.25);
+  await engine.play();
+  advance(context, 0.05 + STEP_SECONDS * 34.5);
+  expect(engine.getPosition()).toBeCloseTo(2.5);
+});
 
 test("the ensemble has distinct ranges and roles, with more than five melodic pitches", () => {
   const patterns = createSeedPatterns();
