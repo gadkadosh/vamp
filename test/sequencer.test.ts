@@ -93,7 +93,7 @@ test.each([
   ["nylon", 11, "nylon"],
   ["glass", 17, "keys"],
 ] as const)(
-  "volume depth reaches the actual %s envelope without moving its onset",
+  "per-note intensity reaches the actual %s envelope without moving its onset",
   async (id, tone, voice) => {
     const notes = compose({
       voice,

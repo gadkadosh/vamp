@@ -1,6 +1,6 @@
 # Vamp
 
-A local musical playground: an abstract space you learn to play by placing and moving lights. Each light plays once per loop. Built with React, TypeScript, Canvas 2D, and native Web Audio. Orbit and Volume use perspective projection and inverse picking, without a 3D library. No external samples, audio libraries, or AI services are used. The Worker scaffold is unchanged and is not used by the instrument.
+A local musical sketchbook: tap to leave a note, drag to change the phrase. Each note plays once per loop. Built with React, TypeScript, Canvas 2D, and native Web Audio. No external samples, audio libraries, or AI services are used. The Worker scaffold is unchanged and is not used by the instrument.
 
 ## Local development
 
@@ -14,30 +14,15 @@ pnpm dev
 
 Open the URL printed by Vite, then press **Play & discover** to enable audio.
 
-## Three spatial experiments
+## Constellation
 
-There are no instrument cards or permanent pitch grids. All three views edit **the same constellation**; switching geometry, flattening, or rotating the camera never changes the music. Open **?** to discover the rules. The app currently opens in the experimental Volume view; Constellation and Orbit remain available for comparison.
+Notes appear as colored lights on a dark field. Left to right is time in a two-measure loop; bottom to top is low to high pitch. There are no cameras, depth controls, input modes, or permanent pitch grids. Open **?** to discover the rules.
 
-- **Constellation:** left-to-right controls a light’s position in a two-measure loop; bottom-to-top moves from low to high pitches. A sweeping playhead and pulses connect each light to the sound it makes.
-- **Orbit:** timing wraps around a perspective ring, and pitch increases outward from its center. Drag the compass handle to turn the viewpoint (including on touchscreens); click it to reset. Alt-drag or right-drag empty space also turns the view. Source dragging is picked at its actual height.
-
-- **Volume (lab):** a genuine 3D volume: horizontal position is timing, height is pitch, and depth is per-note loudness. A movable writing membrane makes placement unambiguous rather than asking a 2D pointer to specify three coordinates at once. Threads connect successive notes of each material; their curves are visual, not additional notes.
-
-### Trying Volume
-
-1. Press **Play & discover**, then **Breathe** to spread the starting phrase through depth with an undoable wave of dynamics. Breathe is deterministic; repeating it without edits does nothing.
-2. Choose **Whisper**, **Glow**, or **Flare** to move the writing membrane. Click to add a note on that plane. Ordinary dragging edits timing and pitch at the note's own depth, even when it is not on the membrane.
-3. Turn on **Pull depth**, then drag a light up to make it louder and bring it forward, or down to soften it. Alt-drag a light does the same without changing mode. Drag empty space in Pull depth mode to move the membrane continuously. Note drags remain previews until release; cancellation leaves the score unchanged.
-4. **Flatten** removes perspective while keeping every note's intensity. Use it to recover an unobstructed composing surface, then return to the volume. Drag **⌖** to turn the volume; click to reset the camera. Camera angles are deliberately limited to keep the writing plane pickable.
-5. With a light selected, **Shift + arrows** adjust its intensity by 10%. Undo/redo includes depth edits and Breathe. The controls work with touch as well as a mouse.
-
-Unedited notes sit at the middle depth and retain their original loudness. Depth scales the actual synthesized envelope of every material, including felt/nylon alternatives; it does not introduce spatial audio, reverb, or a new timbre. Depth does not permit duplicate sounds or a second bass note on the same beat. New notes use the membrane's intensity; switching views preserves it.
-
-**Experiment hypothesis:** depth may be useful as an expressive dimension, provided the user can compose on a stable plane and flatten the view whenever perspective costs clarity. This is not yet evidence that Volume should replace Constellation. Compare the ease of placing a chord, moving one note, and shaping a phrase—not just the appearance of the space.
+Press **Play & discover** to hear the starting phrase. Tap empty space to add a light; drag a light to change timing and pitch. A snapped landing ring and temporary alignment guides appear only while pressing to place or dragging a light, for both mouse and touch. There is no hover preview or temporary note-name label. The preview does not add or sound a note and disappears on release or cancellation. Select a light to duplicate or remove it; undo restores the previous gesture.
 
 ### Magnetic timing and pitch
 
-Lights follow the pointer freely while being dragged. A faint landing point previews the nearest rhythmic step **and** pitch; release to settle gently onto both. Constellation snaps horizontal and vertical positions; Orbit snaps angle and radius. No grid needs to be shown. Dragging preserves the grab point.
+Notes follow the pointer freely while being dragged. A faint landing point previews the nearest rhythmic step **and** pitch; release to settle gently onto both. Horizontal and vertical positions both snap. Dragging preserves the grab point. Moving past the right edge stays on the last timing step instead of wrapping unexpectedly to the beginning.
 
 Dragging is a local preview: the original music continues until a valid release, so passing through an occupied place does not change the composition. Pointer cancellation returns the light home. Settling and bounce animations keep canvas lights and their hit targets aligned, and honor reduced-motion preferences. Timing is always quantized; there is no free-rhythm switch.
 
@@ -82,10 +67,10 @@ The smoke test uses Wrangler’s test harness, independently of Cloudflare’s V
 
 ## Structure
 
-- `src/client/main.tsx`, `style.css`: Application shell, playback, view switching, history, and discovery guide.
+- `src/client/main.tsx`, `style.css`: Application shell, playback, history, and discovery guide.
 - `src/client/PointSpace.tsx`: Direct manipulation, grouped gestures, keyboard interaction, accessible hit targets, and canvas lifecycle.
-- `src/client/drawSpace.ts`: Audio-clock-driven visualization, lights, and playheads.
-- `src/client/space.ts`, `volume.ts`: Spatial projection, depth-aware inverse picking, flattening, and shared canvas/hit-target settling animation.
+- `src/client/drawSpace.ts`: Audio-clock-driven lights, active-placement guides, landing previews, and playheads.
+- `src/client/space.ts`: Shared 2D mapping, inverse picking, and canvas/hit-target settling animation.
 - `src/client/playground.ts`: Light model, tone/material registry, magnetic placement transactions, collision validation, and event compilation.
 - `src/client/score.ts`: Original voice definitions, ranges, seeds, and low-level cell-editing rules.
 - `src/client/sequencer.ts`, `voices.ts`: Audio-clock scheduler and synthesized voices.

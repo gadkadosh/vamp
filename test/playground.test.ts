@@ -11,7 +11,7 @@ import {
   toneFor,
 } from "../src/client/playground";
 import type { Constellation, Source } from "../src/client/playground";
-import { DEFAULT_CAMERA, layoutSources, locate, pick, SETTLE_MS } from "../src/client/space";
+import { layoutSources, locate, pick, SETTLE_MS } from "../src/client/space";
 import { STEP_COUNT } from "../src/client/score";
 
 const light: Source = { id: 1, step: 3, tone: 7 };
@@ -130,80 +130,64 @@ test("every accepted light contributes exactly one note and one hit target in ei
     ]);
     expect(findCollisions(document, source)).toEqual([]);
   }
-  for (const view of ["field", "orbit"] as const) {
-    const points = layoutSources(document.sources, view, DEFAULT_CAMERA, {
-      width: 900,
-      height: 720,
-    });
-    expect(points).toHaveLength(document.sources.length);
-    expect(points.map(({ source }) => source.id).sort((a, b) => a - b)).toEqual(
-      document.sources.map(({ id }) => id),
-    );
-  }
+  const points = layoutSources(document.sources, { width: 900, height: 720 });
+  expect(points).toHaveLength(document.sources.length);
+  expect(points.map(({ source }) => source.id).sort((a, b) => a - b)).toEqual(
+    document.sources.map(({ id }) => id),
+  );
 });
 
-test("drafts track fractional pointer positions in both geometries at every camera angle", () => {
+test("the shared 2D surface tracks fractional pointer positions on desktop and mobile", () => {
   for (const size of [
     { width: 1360, height: 560 },
     { width: 354, height: 440 },
   ])
-    for (const view of ["field", "orbit"] as const) {
-      for (const camera of [DEFAULT_CAMERA, { yaw: 2, tilt: 0.55 }, { yaw: -4, tilt: 1.25 }])
-        for (let tone = 0.137; tone < TONES.length - 1; tone += 1.17)
-          for (let step = 0.271; step < STEP_COUNT; step += 2.37) {
-            const source = { ...light, step, tone };
-            const position = locate(source, view, camera, size);
-            const picked = pick(position.x, position.y, view, camera, size);
-            expect(picked.step).toBeCloseTo(step, 9);
-            expect(picked.tone).toBeCloseTo(tone, 9);
-          }
-    }
+    for (let tone = 0.137; tone < TONES.length - 1; tone += 1.17)
+      for (let step = 0.271; step < STEP_COUNT - 1; step += 2.37) {
+        const position = locate({ ...light, step, tone }, size);
+        const picked = pick(position.x, position.y, size);
+        expect(picked.step).toBeCloseTo(step, 9);
+        expect(picked.tone).toBeCloseTo(tone, 9);
+      }
 });
 
 test("landing and bounce animations share the same positions for drawing and hit testing", () => {
   const size = { width: 1360, height: 560 };
-  for (const view of ["field", "orbit"] as const) {
-    const draft = { ...light, step: 12.34, tone: 9.21 };
-    const landing = snapSource(draft);
-    const motion = { from: draft, to: landing, started: 100 };
-    const projected = (time: number) =>
-      layoutSources([landing], view, DEFAULT_CAMERA, size, motion, time)[0].position;
-    const from = locate(draft, view, DEFAULT_CAMERA, size);
-    const to = locate(landing, view, DEFAULT_CAMERA, size);
-    expect(projected(100).x).toBeCloseTo(from.x, 9);
-    expect(projected(100).y).toBeCloseTo(from.y, 9);
-    expect(projected(100 + SETTLE_MS)).toEqual(to);
-    const halfway = projected(100 + SETTLE_MS / 2);
-    expect(halfway.x).not.toBe(from.x);
-    expect(halfway.x).not.toBe(to.x);
-    expect(halfway.y).not.toBe(from.y);
-    expect(halfway.y).not.toBe(to.y);
-    expect(halfway.x).toBeGreaterThan(Math.min(from.x, to.x));
-    expect(halfway.x).toBeLessThan(Math.max(from.x, to.x));
-    const bounce = layoutSources(
-      [light],
-      view,
-      DEFAULT_CAMERA,
-      size,
-      { from: draft, to: light, started: 100 },
-      100 + SETTLE_MS,
-    )[0];
-    expect(bounce.position).toEqual(locate(light, view, DEFAULT_CAMERA, size));
-  }
+  const draft = { ...light, step: 12.34, tone: 9.21 };
+  const landing = snapSource(draft);
+  const motion = { from: draft, to: landing, started: 100 };
+  const projected = (time: number) => layoutSources([landing], size, motion, time)[0].position;
+  const from = locate(draft, size),
+    to = locate(landing, size);
+  expect(projected(100)).toEqual(from);
+  expect(projected(100 + SETTLE_MS)).toEqual(to);
+  const halfway = projected(100 + SETTLE_MS / 2);
+  expect(halfway.x).toBeGreaterThan(Math.min(from.x, to.x));
+  expect(halfway.x).toBeLessThan(Math.max(from.x, to.x));
+  expect(halfway.y).toBeGreaterThan(Math.min(from.y, to.y));
+  expect(halfway.y).toBeLessThan(Math.max(from.y, to.y));
+  const bounce = layoutSources(
+    [light],
+    size,
+    { from: draft, to: light, started: 100 },
+    100 + SETTLE_MS,
+  )[0];
+  expect(bounce.position).toEqual(locate(light, size));
 });
 
 test("out-of-bounds picking stays finite and timing nudges wrap without moving the pitch axis", () => {
-  for (const view of ["field", "orbit"] as const)
-    for (const x of [-500, 0, 177, 354, 1000])
-      for (const y of [-500, 0, 220, 440, 1000]) {
-        const position = pick(x, y, view, { yaw: 2, tilt: 0.55 }, { width: 354, height: 440 });
-        expect(Number.isFinite(position.step)).toBe(true);
-        expect(position.step).toBeGreaterThanOrEqual(0);
-        expect(position.step).toBeLessThan(STEP_COUNT);
-        expect(Number.isFinite(position.tone)).toBe(true);
-        expect(position.tone).toBeGreaterThanOrEqual(0);
-        expect(position.tone).toBeLessThanOrEqual(TONES.length - 1);
-      }
+  for (const x of [-500, 0, 177, 354, 1000])
+    for (const y of [-500, 0, 220, 440, 1000]) {
+      const position = pick(x, y, { width: 354, height: 440 });
+      expect(Number.isFinite(position.step)).toBe(true);
+      expect(position.step).toBeGreaterThanOrEqual(0);
+      expect(position.step).toBeLessThanOrEqual(STEP_COUNT - 1);
+      expect(Number.isFinite(position.tone)).toBe(true);
+      expect(position.tone).toBeGreaterThanOrEqual(0);
+      expect(position.tone).toBeLessThanOrEqual(TONES.length - 1);
+    }
+  // The right edge lands on the final step, not a surprising jump back to step 0.
+  expect(snapSource({ ...light, ...pick(354, 100, { width: 354, height: 440 }) }).step).toBe(31);
   expect(moveSource({ ...light, step: 0, tone: 0.1 }, -1, 0)).toMatchObject({
     step: 31,
     tone: 0.1,
@@ -222,8 +206,7 @@ test("the seed has no conflicting or silent lights and projection never changes 
   for (const source of document.sources) {
     expect(findCollisions(document, source)).toEqual([]);
     expect(instrumentFor(source, document.voice)).toBe(toneFor(source).instrument);
-    locate(source, "field", DEFAULT_CAMERA, { width: 1000, height: 600 });
-    locate(source, "orbit", { yaw: 2, tilt: 1 }, { width: 1000, height: 600 });
+    locate(source, { width: 1000, height: 600 });
   }
   expect(document).toEqual(before);
   expect(compose(document)).toEqual(score);

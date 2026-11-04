@@ -9,7 +9,7 @@ import {
   toneFor,
   wrapStep,
 } from "./playground";
-import type { CollisionFeedback, Constellation, Placement, Source, View } from "./playground";
+import type { CollisionFeedback, Constellation, Placement, Source } from "./playground";
 import { Sequencer } from "./sequencer";
 import "./style.css";
 
@@ -93,7 +93,6 @@ function App() {
   const score = useMemo(() => compose(document), [document]);
   const scoreRef = useRef(score);
   const engine = useRef<Sequencer | null>(null);
-  const [view, setView] = useState<View>("volume");
   const [selectedId, setSelected] = useState<number | null>(null);
   const selected = document.sources.find((source) => source.id === selectedId);
   const nextSource = useRef(Math.max(...document.sources.map((source) => source.id), 0) + 1);
@@ -103,9 +102,7 @@ function App() {
   const [help, setHelp] = useState(false);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState<CollisionFeedback | null>(null);
-  const [message, setMessage] = useState(
-    "A new experiment. Try Breathe to give the starting phrase depth.",
-  );
+  const [message, setMessage] = useState("A few notes to start. Make the next one yours.");
 
   useEffect(() => {
     const sequencer = new Sequencer(
@@ -146,7 +143,7 @@ function App() {
       edit(() => result.document, remember);
       setFeedback(null);
       setSelected(result.source.id);
-      if (result.document !== current) setMessage("A little light, settled into the music.");
+      if (result.document !== current) setMessage("A note, settled into the phrase.");
     } else {
       setFeedback({ collisions: result.collisions, started: performance.now() });
       setMessage(
@@ -213,43 +210,14 @@ function App() {
   }
 
   return (
-    <main className={`app view-${view}`}>
+    <main className="app">
       <header className="masthead">
         <a className="wordmark" href="/" aria-label="Vamp home">
           vamp<span>·</span>
         </a>
         <span className="edition">
-          Open-ended instruments <i>/</i> study 03
+          Open-ended instruments <i>/</i> study 04
         </span>
-        <nav className="view-switch" aria-label="Spatial experiments">
-          <button
-            aria-pressed={view === "field"}
-            onClick={() => {
-              setView("field");
-              setMessage("The same sounds, laid out in a field.");
-            }}
-          >
-            <span className="view-glyph field-glyph">∴</span>Constellation
-          </button>
-          <button
-            aria-pressed={view === "orbit"}
-            onClick={() => {
-              setView("orbit");
-              setMessage("The same constellation, wrapped around a loop. Drag ⌖ to turn it.");
-            }}
-          >
-            <span className="view-glyph">◎</span>Orbit
-          </button>
-          <button
-            aria-pressed={view === "volume"}
-            onClick={() => {
-              setView("volume");
-              setMessage("Depth is intensity. Try Breathe, then pull a light out of the quiet.");
-            }}
-          >
-            <span className="view-glyph">◇</span>Volume <span className="lab-tag">LAB</span>
-          </button>
-        </nav>
         <div className="header-tools">
           <button
             className="icon-button"
@@ -279,7 +247,7 @@ function App() {
               edit((previous) => ({ ...previous, sources: [] }));
               setSelected(null);
               setFeedback(null);
-              setMessage("An empty space. Every light you place becomes part of the loop.");
+              setMessage("An empty space. Tap anywhere to begin.");
             }}
           >
             <Icon name="clear" />
@@ -312,34 +280,15 @@ function App() {
 
       <section className="instrument-space" aria-label="Abstract musical instrument">
         <div className="space-intro">
-          <p className="eyebrow">
-            {view === "volume"
-              ? "03 — A playable volume / experimental"
-              : view === "field"
-                ? "01 — A constellation of small decisions"
-                : "02 — The same idea, in another dimension"}
-          </p>
-          <h1>
-            {view === "volume"
-              ? "Pull a little music out of the quiet."
-              : view === "field"
-                ? "What happens if you leave a little light?"
-                : "A little gravity. A little repetition."}
-          </h1>
-          <p>
-            {view === "volume"
-              ? "Time across. Pitch above. A whole new dimension of feeling."
-              : view === "field"
-                ? "Place one. Move it. Leave another."
-                : "Place a light in the space. Then move it somewhere else."}
-          </p>
+          <p className="eyebrow">01 / A constellation of small decisions</p>
+          <h1>What happens if you leave a little light?</h1>
+          <p>Place one. Move it. Leave another.</p>
         </div>
         <div className="surface-container">
           <PointSpace
             document={document}
             score={score}
             selected={selected?.id ?? null}
-            view={view}
             playing={playing}
             feedback={feedback}
             onSelect={setSelected}
@@ -354,16 +303,10 @@ function App() {
             <span className="live-dot" />
             {playing ? "A shared loop, unfolding." : "The space is listening."}
           </div>
-          <div className="gesture-hint">
-            {view === "volume"
-              ? "⌖ Turn the volume · Shift-drag to scatter"
-              : view === "orbit"
-                ? "Drag ⌖ to turn · Shift-drag to scatter"
-                : "Click to leave a light · Shift-drag to scatter"}
-          </div>
+          <div className="gesture-hint">Tap to add · Drag to move</div>
           {document.sources.length === 0 && (
             <div className="empty-invitation" aria-hidden="true">
-              <span>＋</span>Somewhere is a good place to start.
+              <span>＋</span>A first note is all it takes.
             </div>
           )}
         </div>
@@ -383,28 +326,14 @@ function App() {
               <div>
                 <dt>Place & move</dt>
                 <dd>
-                  {view === "volume"
-                    ? "Left to right is when. Bottom to top is pitch. Depth is intensity: whisper at the back, flare at the front. Choose where to write with Whisper, Glow, or Flare."
-                    : view === "field"
-                      ? "Left to right is when. Bottom to top is low to high."
-                      : "Around the circle is when. Out from the center is low to high."}{" "}
-                  Drag freely. A small landing point previews the beat and pitch; release to settle
-                  onto both. The color follows the sound.
+                  Left to right is when. Bottom to top is low to high. Press to place a light or
+                  drag one to move it. Temporary guides and a landing point appear only while
+                  positioning it. Release to settle onto the beat and pitch. The color follows the
+                  sound.
                 </dd>
               </div>
-              {view === "volume" && (
-                <div>
-                  <dt>Give depth a job</dt>
-                  <dd>
-                    Try Breathe for an undoable wave of dynamics. Turn on Pull depth, then drag a
-                    light up to bring it forward and make it louder; down to make it softer.
-                    Shift-arrows do the same. Flatten lets you compose without perspective,
-                    preserving every intensity. The compass turns the view, never the music.
-                  </dd>
-                </div>
-              )}
               <div>
-                <dt>Every light has a voice</dt>
+                <dt>Every note has a voice</dt>
                 <dd>
                   Felt and nylon can form chords. Bass has one note per beat: an occupied landing
                   flashes, and an invalid drag returns home. Identical sounds also flash instead of
@@ -414,19 +343,19 @@ function App() {
               <div>
                 <dt>Make a mark</dt>
                 <dd>
-                  Shift-drag through empty space to leave a trail of lights. There’s no fixed number
+                  Shift-drag through empty space to leave a trail of notes. There’s no fixed number
                   you have to work with.
                 </dd>
               </div>
               <div>
                 <dt>Take something away</dt>
                 <dd>
-                  Select a light and use the bin below, or right-click it. Undo brings it back.
+                  Select a note and use the bin below, or right-click it. Undo brings it back.
                 </dd>
               </div>
             </dl>
             <p className="discovery-foot">
-              All notes share a scale. No light is silently ignored. Tab into the space for keyboard
+              All notes share a scale. No note is silently ignored. Tab into the space for keyboard
               controls.
             </p>
           </aside>
@@ -438,15 +367,11 @@ function App() {
           {selected ? (
             <>
               <span className="selection-dot" />
-              {view === "volume" && (
-                <span className="energy-readout">
-                  {Math.round((selected.energy ?? 0.5) * 100)}% intensity
-                </span>
-              )}
+              <span className="selection-name">{toneFor(selected).note.name}</span>
               <button
                 className="icon-button"
-                title="Duplicate light"
-                aria-label="Duplicate selected light"
+                title="Duplicate note"
+                aria-label="Duplicate selected note"
                 onClick={() => {
                   const copy = {
                     ...selected,
@@ -460,8 +385,8 @@ function App() {
               </button>
               <button
                 className="icon-button"
-                title="Remove light · Delete key"
-                aria-label="Remove selected light"
+                title="Remove note · Delete key"
+                aria-label="Remove selected note"
                 onClick={() => {
                   edit((previous) => ({
                     ...previous,
@@ -486,7 +411,7 @@ function App() {
         </div>
         <div className="listening-tools">
           <span className="source-count">
-            {document.sources.length} {document.sources.length === 1 ? "light" : "lights"} <i>·</i>{" "}
+            {document.sources.length} {document.sources.length === 1 ? "note" : "notes"} <i>·</i>{" "}
             one loop
           </span>
           <span className="tool-divider" />
@@ -500,7 +425,7 @@ function App() {
                 ...previous,
                 voice: previous.voice === "keys" ? "nylon" : "keys",
               }));
-              setMessage("The same lights, with a different melodic texture.");
+              setMessage("The same notes, with a different melodic texture.");
             }}
           >
             <Icon name="voice" />
@@ -524,7 +449,7 @@ function App() {
         <span>Just this visit. Nothing is saved.</span>
       </div>
       <p className="sr-only" aria-live="polite">
-        {selected ? sourceLabel(selected, document.voice) : "No light selected."}
+        {selected ? sourceLabel(selected, document.voice) : "No note selected."}
       </p>
     </main>
   );

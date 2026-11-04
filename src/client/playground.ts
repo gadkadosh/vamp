@@ -25,11 +25,10 @@ export const TONES = MATERIALS.flatMap((material) => {
 // Drafts move continuously; committed lights land on rhythmic and pitched positions.
 export type Source = { id: number; step: number; tone: number; energy?: number };
 export const energyFor = (source: Source) => clamp(source.energy ?? 0.5);
-// The middle of the volume preserves the original loudness.
+// Neutral intensity preserves the original loudness.
 export const gainForEnergy = (energy: number) => 0.18 + clamp(energy) * 1.64;
 export type Constellation = { sources: Source[]; voice: "keys" | "nylon" };
 export type SpatialNote = TimedNote & { sourceId: number };
-export type View = "field" | "orbit" | "volume";
 export type Collision = { sourceId: number; step: number };
 export type CollisionFeedback = { collisions: Collision[]; started: number };
 export type Placement = {
@@ -67,18 +66,6 @@ export function createConstellation(): Constellation {
     }
   }
   return { sources, voice: "keys" };
-}
-
-export function breathe(document: Constellation): Constellation {
-  const sources = document.sources.map((source) => {
-    const energy = clamp(
-      0.5 + Math.sin((source.step / STEP_COUNT) * Math.PI * 2 + source.tone * 0.24) * 0.43,
-    );
-    return energy === energyFor(source) ? source : { ...source, energy };
-  });
-  return sources.every((source, i) => source === document.sources[i])
-    ? document
-    : { ...document, sources };
 }
 
 export function instrumentFor(source: Source, voice: Constellation["voice"]): InstrumentId {
@@ -142,5 +129,5 @@ export function moveSource(source: Source, stepDelta: number, toneDelta: number)
 
 export function sourceLabel(source: Source, voice: Constellation["voice"]): string {
   const instrument = INSTRUMENTS.find(({ id }) => id === instrumentFor(source, voice))!;
-  return `Light ${source.id}: ${instrument.name}, ${toneFor(source).note.name}, beat position ${soundingStep(source.step) + 1} of ${STEP_COUNT}${source.energy === undefined ? "" : `, intensity ${Math.round(energyFor(source) * 100)} percent`}`;
+  return `Note ${source.id}: ${instrument.name}, ${toneFor(source).note.name}, beat position ${soundingStep(source.step) + 1} of ${STEP_COUNT}${source.energy === undefined ? "" : `, intensity ${Math.round(energyFor(source) * 100)} percent`}`;
 }
