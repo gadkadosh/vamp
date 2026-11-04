@@ -8,7 +8,7 @@ import {
   togglePatternCell,
 } from "../src/client/score";
 import type { InstrumentId, Patterns, TimedNote } from "../src/client/score";
-import { compose, gainForEnergy } from "../src/client/playground";
+import { compose, gainForEnergy, placeSource } from "../src/client/playground";
 import type { Constellation } from "../src/client/playground";
 import { Sequencer } from "../src/client/sequencer";
 import { carriers, channel, plucks, routesTo, TestAudioContext } from "./audio-context";
@@ -85,6 +85,63 @@ const floatingLight: Constellation = {
   voice: "keys",
   sources: [{ id: 1, step: 2.37, tone: 7.13 }],
 };
+
+test.each([
+  ["bass", 2, "keys"],
+  ["mallet", 7, "keys"],
+  ["keys", 11, "keys"],
+  ["nylon", 11, "nylon"],
+  ["glass", 17, "keys"],
+] as const)(
+  "editable length damps %s at its gate without shifting or retriggering the note",
+  async (id, tone, voice) => {
+    const notes = compose({
+      voice,
+      sources: [
+        { id: 1, step: 0, tone, length: 1 },
+        { id: 2, step: 8, tone, length: 4 },
+      ],
+    });
+    const { context } = await startTimed(() => notes);
+    runUntil(context, 0.05 + 12 * STEP_SECONDS + 0.1);
+    const voices = sources(context, id);
+    const first = voices.find((source) => source.start.mock.calls[0][0] === 0.05)!;
+    const second = voices.find(
+      (source) => source.start.mock.calls[0][0] === 0.05 + 8 * STEP_SECONDS,
+    )!;
+    expect(first.stop.mock.calls.at(-1)![0]).toBeCloseTo(0.05 + STEP_SECONDS, 10);
+    expect(second.stop.mock.calls.at(-1)![0]).toBeCloseTo(0.05 + 12 * STEP_SECONDS, 10);
+    expect(first.start).toHaveBeenCalledTimes(1);
+    expect(second.start).toHaveBeenCalledTimes(1);
+  },
+);
+
+test.each([
+  ["mallet", 7],
+  ["glass", 17],
+] as const)("the default %s tail preserves its original natural decay", async (id, tone) => {
+  const { context } = await startTimed(() =>
+    compose({ voice: "keys", sources: [{ id: 1, step: 0, tone }] }),
+  );
+  runUntil(context, 3.2);
+  const voices = carriers(context, id);
+  expect(voices).toHaveLength(id === "mallet" ? 1 : 3);
+  for (const voice of voices) expect(voice.stop).toHaveBeenCalledTimes(1);
+  expect(voices[0].stop.mock.calls[0][0]).toBeCloseTo(0.05 + (id === "mallet" ? 0.9 : 2.83), 10);
+});
+
+test("a committed length edit reaches the next unscheduled strike without changing its onset", async () => {
+  let document: Constellation = { voice: "keys", sources: [{ id: 1, step: 8, tone: 7 }] };
+  const { context } = await startTimed(() => compose(document));
+  const result = placeSource(document, { ...document.sources[0], length: 1 });
+  expect(result.accepted).toBe(true);
+  document = result.document;
+  runUntil(context, 2);
+  const strikes = carriers(context, "mallet");
+  expect(strikes).toHaveLength(1);
+  expect(strikes[0].start.mock.calls[0][0]).toBeCloseTo(0.05 + 8 * STEP_SECONDS, 10);
+  expect(strikes[0].stop.mock.calls.at(-1)![0]).toBeCloseTo(0.05 + 9 * STEP_SECONDS, 10);
+});
 
 test.each([
   ["bass", 2, "keys"],

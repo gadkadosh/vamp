@@ -7,25 +7,27 @@ export function scheduleMallet(
 ) {
   const oscillator = context.createOscillator();
   const envelope = context.createGain();
+  const gate = context.createGain();
   oscillator.type = "sine";
   oscillator.frequency.value = frequency;
   envelope.gain.setValueAtTime(0, time);
   envelope.gain.linearRampToValueAtTime(0.12 * gain, time + 0.02);
   envelope.gain.exponentialRampToValueAtTime(0.0001, time + 0.85);
   envelope.gain.linearRampToValueAtTime(0, time + 0.9);
-  oscillator.connect(envelope).connect(output);
+  oscillator.connect(envelope).connect(gate).connect(output);
   oscillator.start(time);
   oscillator.stop(time + 0.9);
   oscillator.onended = () => {
     oscillator.disconnect();
     envelope.disconnect();
+    gate.disconnect();
   };
+  return damper(gate, [{ source: oscillator, end: time + 0.9 }], time);
 }
 
 type TimedSource = { source: AudioScheduledSourceNode; end: number };
 
-// Damp just before a note change: the next melody/bass note never forms a chord
-// with the previous note's tail. The short fade avoids an abrupt click.
+// Damp a voice at its gate end (or the next bass onset). The short fade avoids clicks.
 function damper(gate: GainNode, sources: TimedSource[], start: number) {
   const end = Math.max(...sources.map((item) => item.end));
   return (time: number) => {
@@ -97,7 +99,7 @@ export function scheduleGlass(
   gain = 1,
 ) {
   // Inharmonic modes give these high accents a glass-like, rather than keyboard, color.
-  ringPartials(
+  return ringPartials(
     context,
     output,
     frequency,

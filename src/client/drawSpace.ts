@@ -1,5 +1,5 @@
 import { STEP_COUNT } from "./score";
-import { snapSource, soundingStep, toneFor, TONES } from "./playground";
+import { durationFor, snapSource, soundingStep, toneFor, TONES } from "./playground";
 import type {
   Collision,
   CollisionFeedback,
@@ -7,10 +7,10 @@ import type {
   Source,
   SpatialNote,
 } from "./playground";
-import { fieldBounds, locate, TAU } from "./space";
+import { fieldBounds, locate, tailLayout, TAU } from "./space";
 import type { LightProjection, Position, Size } from "./space";
 
-export type LandingPreview = { source: Source; collisions: Collision[] };
+export type LandingPreview = { source: Source; collisions: Collision[]; resizing?: boolean };
 export type Scene = {
   document: Constellation;
   selected: number | null;
@@ -20,7 +20,12 @@ export type Scene = {
   feedback: CollisionFeedback | null;
 };
 
-function line(context: CanvasRenderingContext2D, points: Position[], color: string, width = 1) {
+function line(
+  context: CanvasRenderingContext2D,
+  points: Position[],
+  color: string | CanvasGradient,
+  width = 1,
+) {
   context.beginPath();
   points.forEach((point, i) =>
     i ? context.lineTo(point.x, point.y) : context.moveTo(point.x, point.y),
@@ -126,6 +131,38 @@ export function drawSpace(
     circle(context, { x, y: bounds.top + bounds.height + 21 }, 2, "#bdceba");
   }
 
+  for (const point of points) {
+    const color = toneFor(point.source).color;
+    const selected = point.source.id === scene.selected;
+    const pulse = pulseFor(point.source);
+    const tail = tailLayout(point, size);
+    for (const segment of tail.segments) {
+      const gradient = context.createLinearGradient(
+        segment.from.x,
+        segment.from.y,
+        segment.to.x,
+        segment.to.y,
+      );
+      for (const [stop, fraction] of [
+        [0, segment.fromFraction],
+        [1, segment.toFraction],
+      ]) {
+        const alpha = (selected ? 0.7 : 0.44) * (1 - fraction * 0.75);
+        gradient.addColorStop(
+          stop,
+          `${color}${Math.round(alpha * 255)
+            .toString(16)
+            .padStart(2, "0")}`,
+        );
+      }
+      context.globalAlpha = 0.13 + pulse * 0.15;
+      line(context, [segment.from, segment.to], gradient, 7);
+      context.globalAlpha = 1;
+      line(context, [segment.from, segment.to], gradient, 1.8);
+    }
+    if (selected) line(context, [tail.end, tail.handle], `${color}55`, 0.8);
+  }
+
   for (const { source, position } of points) {
     const color = toneFor(source).color;
     const selected = source.id === scene.selected;
@@ -165,8 +202,19 @@ export function drawSpace(
   if (scene.preview) {
     const draft = scene.preview.source;
     const landing = snapSource(draft);
-    const from = locate(draft, size),
-      target = locate(landing, size);
+    const previewPosition = (source: Source) =>
+      scene.preview?.resizing
+        ? tailLayout(
+            {
+              source,
+              position: locate(source, size),
+              length: durationFor(source, scene.document.sources),
+            },
+            size,
+          ).end
+        : locate(source, size);
+    const from = previewPosition(draft),
+      target = previewPosition(landing);
     const color = scene.preview.collisions.length ? "#ef9b86" : "#dce6ce";
     context.setLineDash([2, 5]);
     line(

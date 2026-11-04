@@ -2,7 +2,7 @@ import { expect, test } from "vite-plus/test";
 import { drawSpace } from "../src/client/drawSpace";
 import type { Scene } from "../src/client/drawSpace";
 import { compose, snapSource } from "../src/client/playground";
-import { fieldBounds, layoutSources, locate } from "../src/client/space";
+import { fieldBounds, layoutSources, locate, tailLayout } from "../src/client/space";
 
 const size = { width: 900, height: 600 };
 const document: Scene["document"] = { voice: "keys", sources: [{ id: 1, step: 2, tone: 7 }] };
@@ -39,6 +39,9 @@ function recordingContext() {
     },
     arc(x: number, y: number, radius: number) {
       circles.push({ x, y, radius });
+    },
+    createLinearGradient() {
+      return { addColorStop() {} };
     },
     createRadialGradient() {
       return { addColorStop() {} };
@@ -87,6 +90,39 @@ test("placing or dragging shows snapped guides and a landing ring without a note
   expect(recorded.labels).toEqual([]);
   expect(document).toEqual(before);
   expect(compose(document)).toEqual(scene.score);
+});
+
+test("the renderer draws wrapped ringing tails without moving heads or adding notes", () => {
+  const document: Scene["document"] = {
+    voice: "keys",
+    sources: [{ id: 1, step: 31, tone: 11, length: 4 }],
+  };
+  const recorded = render({ ...scene, document, score: compose(document) });
+  const point = layoutSources(document.sources, size)[0];
+  const tail = tailLayout(point, size);
+  const horizontal = recorded.strokes.filter(
+    (stroke) => stroke.points.length === 2 && stroke.points[0].y === stroke.points[1].y,
+  );
+  expect(horizontal.map((stroke) => stroke.points)).toEqual(
+    tail.segments.flatMap((segment) => [
+      [segment.from, segment.to],
+      [segment.from, segment.to],
+    ]),
+  );
+  expect(recorded.circles.filter((circle) => circle.radius === 5.2)).toEqual([
+    { ...point.position, radius: 5.2 },
+  ]);
+  expect(compose(document)).toHaveLength(1);
+  expect(recorded.labels).toEqual([]);
+});
+
+test("resizing previews the quantized tail endpoint rather than moving the note's onset", () => {
+  const source = { ...candidate, step: 12, tone: 11, length: 3.6 };
+  const recorded = render({ ...scene, preview: { source, collisions: [], resizing: true } });
+  const target = tailLayout(layoutSources([snapSource(source)], size)[0], size).end;
+  expect(recorded.circles).toContainEqual({ ...target, radius: 5.5 });
+  expect(recorded.strokes.find((stroke) => stroke.dash.length)?.points[1]).toEqual(target);
+  expect(recorded.labels).toEqual([]);
 });
 
 test("without an active placement, there are no alignment guides, landing ring, or temporary labels", () => {

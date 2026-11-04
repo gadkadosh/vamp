@@ -26,15 +26,24 @@ Notes follow the pointer freely while being dragged. A faint landing point previ
 
 Dragging is a local preview: the original music continues until a valid release, so passing through an occupied place does not change the composition. Pointer cancellation returns the light home. Settling and bounce animations keep canvas lights and their hit targets aligned, and honor reduced-motion preferences. Timing is always quantized; there is no free-rhythm switch.
 
+### Ringing length
+
+Each light has a horizontal, fading tail: the maximum time its sound may ring. Select a light and drag the small diamond below its endpoint to resize it, without moving its onset or pitch. Length follows the pointer freely and settles to whole sixteenth-note steps on release, from 1 to 32 steps. The tail continues at the left edge if it crosses the loop seam.
+
+Shortening damps **every material**, including mallet and glass. Extending allows the natural decay to continue; it does not hold the volume constant or stretch the sound. Bass tails end at the next bass note, and resizing cannot extend past that onset. Overlapping polyphonic notes keep independent gates.
+
+Unedited lights inherit their material's default: bass 4 steps, felt/nylon 2, mallet 6, glass 17. The struck defaults are rounded up to let the original natural decays finish, preserving the starting sound. Explicitly resized lengths stay with lights when moved, duplicated, or switched between felt and nylon. Resize gestures are previews until release, cancel safely, and are undoable like position edits. Audio changes apply to the next unscheduled strike, not a note already ringing.
+
 ### Gestures
 
 - **Click empty space:** add a light at its magnetic landing point. **Drag a light:** preview a new timing and pitch, then release to commit.
+- **Drag the selected endpoint:** change ringing length. The light itself still moves timing and pitch.
 - **Shift-drag empty space:** scatter a trail of lights as one undoable gesture.
 - **Right-click a light**, or select it and use the lower bin button, to remove it. The duplicate button adds a copy four steps later.
 - **Undo / Redo:** buttons or Cmd/Ctrl Z / Cmd/Ctrl Shift Z. Each drag or scattered trail is one history entry. Clear and reset are also undoable.
 - **Wave icon:** switch the melody’s material between felt and nylon while preserving the same lights. The speaker toggles master mute; unmuted volume is 35%.
 
-Keyboard: Tab into the space. Enter adds a light; arrows select the first light if none is selected, then move the selection one rhythmic step left/right or one pitch up/down; Delete/Backspace removes; Escape deselects; Space plays or pauses. Tab leaves the surface. Individual lights expose descriptive accessible names, and the selected light is also keyboard-focusable.
+Keyboard: Tab into the space. Enter adds a light; arrows select the first light if none is selected, then move the selection one rhythmic step left/right or one pitch up/down. **[ / ]** shorten/lengthen the selection by one step. Tab can focus the selected endpoint, where left/right resize instead of moving the light. Enter on the endpoint returns focus to the surface. Delete/Backspace removes; Escape deselects; Space plays or pauses. Tab leaves the surface and its selected controls. Individual lights expose descriptive accessible names including their maximum ringing length.
 
 The musical rules are deterministic. A single ascending tone axis passes through bass, mallet, melody, and glass materials, with color following material. It uses a subset of each voice’s original range so moving higher never drops the pitch when crossing a material boundary. The starting constellation adapts the original seed phrases to this axis.
 
@@ -48,7 +57,7 @@ Everything—including history—lives in memory in the current tab. Reloading r
 
 Five synthesized acoustic sketches are available: mallet, felt keys, nylon pluck, plucked bass, and glass chimes. Felt and nylon are alternatives for the same melodic lights, never doubled together. These are synthesized sketches, not recordings or physically accurate replicas.
 
-All sounds share a two-measure 4/4 loop at 88 BPM in C major, with 32 sixteenth-note timing positions. Melody notes overlap independently and damp at their own gate ends. Bass damps at its gate end or the next bass onset. Notes can ring across the loop seam rather than being cut short. Each new loop re-articulates the phrase. Pause freezes the Web Audio clock and holds the visual playhead; mute does not stop it. The visual playhead reads that same clock rather than running a separate animation timer.
+All sounds share a two-measure 4/4 loop at 88 BPM in C major, with 32 sixteenth-note timing positions. All materials damp at their own gate ends; polyphonic notes overlap independently. Bass also damps at the next bass onset. Notes can ring across the loop seam rather than being cut short. Each new loop re-articulates the phrase. Pause freezes the Web Audio clock and holds the visual playhead; mute does not stop it. The visual playhead reads that same clock rather than running a separate animation timer.
 
 Audio is scheduled slightly ahead for steady timing. Changes affect the next unscheduled audio window rather than restarting the loop. A sleeping or heavily throttled tab may skip strikes or delay held-note changes rather than catch up in a burst.
 
@@ -70,7 +79,7 @@ The smoke test uses Wrangler’s test harness, independently of Cloudflare’s V
 - `src/client/main.tsx`, `style.css`: Application shell, playback, history, and discovery guide.
 - `src/client/PointSpace.tsx`: Direct manipulation, grouped gestures, keyboard interaction, accessible hit targets, and canvas lifecycle.
 - `src/client/drawSpace.ts`: Audio-clock-driven lights, active-placement guides, landing previews, and playheads.
-- `src/client/space.ts`: Shared 2D mapping, inverse picking, and canvas/hit-target settling animation.
+- `src/client/space.ts`: 2D mapping, inverse picking, loop-wrapped tails, and shared head/length-handle settling animation.
 - `src/client/playground.ts`: Light model, tone/material registry, magnetic placement transactions, collision validation, and event compilation.
 - `src/client/score.ts`: Original voice definitions, ranges, seeds, and low-level cell-editing rules.
 - `src/client/sequencer.ts`, `voices.ts`: Audio-clock scheduler and synthesized voices.

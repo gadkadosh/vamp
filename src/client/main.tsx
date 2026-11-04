@@ -303,7 +303,9 @@ function App() {
             <span className="live-dot" />
             {playing ? "A shared loop, unfolding." : "The space is listening."}
           </div>
-          <div className="gesture-hint">Tap to add · Drag to move</div>
+          <div className="gesture-hint">
+            {selected ? "Drag end to change length" : "Tap to add · Drag to move"}
+          </div>
           {document.sources.length === 0 && (
             <div className="empty-invitation" aria-hidden="true">
               <span>＋</span>A first note is all it takes.
@@ -330,6 +332,15 @@ function App() {
                   drag one to move it. Temporary guides and a landing point appear only while
                   positioning it. Release to settle onto the beat and pitch. The color follows the
                   sound.
+                </dd>
+              </div>
+              <div>
+                <dt>Let it ring</dt>
+                <dd>
+                  A light starts the note; its tail is how long it may ring. Select a light and drag
+                  the small diamond at its end to change length. Brackets also shorten or lengthen
+                  the selection. Tails continue across the loop edge. Bass ends at the next bass
+                  note. Sounds decay naturally; a longer tail does not hold them at full volume.
                 </dd>
               </div>
               <div>

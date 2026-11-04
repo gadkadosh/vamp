@@ -2,6 +2,7 @@ import { expect, test } from "vite-plus/test";
 import {
   compose,
   createConstellation,
+  durationFor,
   findCollisions,
   instrumentFor,
   moveSource,
@@ -47,7 +48,7 @@ test("landing snaps both timing and pitch, wraps the loop seam, and is idempoten
   expect(draft.tone).toBe(7.137);
   expect(compose(empty)).toEqual([]);
   expect(compose(result.document)).toEqual([
-    { sourceId: 1, instrument: "mallet", row: TONES[7].row, step: 4, length: 1 },
+    { sourceId: 1, instrument: "mallet", row: TONES[7].row, step: 4, length: 6 },
   ]);
 });
 
@@ -105,7 +106,7 @@ test("identical sounds flash existing lights rather than keeping silent duplicat
   expect(add(documentOf(light), { ...light, id: 2, tone: 10 }).sources).toHaveLength(2);
 });
 
-test("every accepted light contributes exactly one note and one hit target in either view", () => {
+test("every accepted light contributes exactly one note and one hit target", () => {
   let document = documentOf();
   for (let id = 1; id <= 300; id++) {
     const result = placeSource(document, {
@@ -125,7 +126,7 @@ test("every accepted light contributes exactly one note and one hit target in ei
         instrument: instrumentFor(source, document.voice),
         row: toneFor(source).row,
         step: source.step,
-        length: toneFor(source).gate,
+        length: durationFor(source, document.sources),
       },
     ]);
     expect(findCollisions(document, source)).toEqual([]);

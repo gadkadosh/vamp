@@ -186,35 +186,25 @@ export class Sequencer {
       stopDue(time);
       const instrument = INSTRUMENTS.find(({ id }) => id === note.instrument)!;
       const channel = this.channels.get(instrument.id)!;
-      if (instrument.mode === "hit") {
-        instrument.start(
+      if (!VOICE_POLYPHONY[instrument.id]) {
+        for (const voice of this.timedVoices) {
+          if (voice.instrument === instrument.id) {
+            voice.stop(time);
+            this.timedVoices.delete(voice);
+          }
+        }
+      }
+      this.timedVoices.add({
+        instrument: instrument.id,
+        end: time + note.length * STEP_SECONDS,
+        stop: instrument.start(
           this.context!,
           channel,
           instrument.notes[note.row].frequency,
           time,
           note.gain,
-        );
-      } else {
-        if (!VOICE_POLYPHONY[instrument.id]) {
-          for (const voice of this.timedVoices) {
-            if (voice.instrument === instrument.id) {
-              voice.stop(time);
-              this.timedVoices.delete(voice);
-            }
-          }
-        }
-        this.timedVoices.add({
-          instrument: instrument.id,
-          end: time + note.length * STEP_SECONDS,
-          stop: instrument.start(
-            this.context!,
-            channel,
-            instrument.notes[note.row].frequency,
-            time,
-            note.gain,
-          ),
-        });
-      }
+        ),
+      });
     }
     stopDue(until);
     // A rolling, half-open audio-time window prevents duplicate strikes, handles
