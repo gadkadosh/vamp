@@ -211,12 +211,10 @@ h1 {
 .light-hit:active {
   cursor: grabbing;
 }
-.light-hit:focus-visible,
-.length-hit:focus-visible {
+.light-hit:focus-visible {
   outline: none;
 }
-.light-hit::after,
-.length-hit::after {
+.light-hit::after {
   content: "";
   position: absolute;
   inset: 3px;
@@ -233,36 +231,7 @@ h1 {
     linear-gradient(currentColor 0 0) bottom right / 1px 5px no-repeat;
   opacity: 0;
 }
-.is-keyboard .light-hit:focus-visible::after,
-.is-keyboard .length-hit:focus-visible::after {
-  opacity: 1;
-}
-.length-hit {
-  position: absolute;
-  z-index: 1;
-  transform: translate(-50%, -50%);
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  cursor: ew-resize;
-}
-.length-hit > span {
-  width: 1px;
-  height: 9px;
-  background: currentColor;
-  opacity: 0.65;
-}
-.is-resizing,
-.is-resizing button {
-  cursor: ew-resize;
-}
-.is-resizing .length-hit > span {
-  width: 2px;
+.is-keyboard .light-hit:focus-visible::after {
   opacity: 1;
 }
 .surface-caption,

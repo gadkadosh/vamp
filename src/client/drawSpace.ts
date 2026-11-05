@@ -1,5 +1,5 @@
 import { STEP_COUNT } from "./score";
-import { durationFor, snapSource, soundingStep, toneFor, TONES } from "./playground";
+import { snapSource, soundingStep, toneFor, TONES } from "./playground";
 import type {
   Collision,
   CollisionFeedback,
@@ -7,10 +7,10 @@ import type {
   Source,
   SpatialNote,
 } from "./playground";
-import { fieldBounds, locate, tailLayout, TAU } from "./space";
+import { fieldBounds, locate, TAU } from "./space";
 import type { LightProjection, Position, Size } from "./space";
 
-export type LandingPreview = { source: Source; collisions: Collision[]; resizing?: boolean };
+export type LandingPreview = { source: Source; collisions: Collision[] };
 export type Scene = {
   document: Constellation;
   selected: number | null;
@@ -131,45 +131,6 @@ export function drawSpace(
     circle(context, { x, y: bounds.top + bounds.height + 21 }, 2, "#bdceba");
   }
 
-  for (const point of points) {
-    const color = toneFor(point.source).color;
-    const selected = point.source.id === scene.selected;
-    const tail = tailLayout(point, size);
-    const length = (point.length * bounds.width) / STEP_COUNT;
-    // Let the filament emerge inside the head's glow instead of touching its rim.
-    const emergeFrom = Math.min(2 / length, 0.15);
-    const emergeTo = Math.min(18 / length, 0.45);
-    for (const segment of tail.segments) {
-      const gradient = context.createLinearGradient(
-        segment.from.x,
-        segment.from.y,
-        segment.to.x,
-        segment.to.y,
-      );
-      const stops = [
-        segment.fromFraction,
-        ...[emergeFrom, emergeTo, 0.6].filter(
-          (fraction) => fraction > segment.fromFraction && fraction < segment.toFraction,
-        ),
-        segment.toFraction,
-      ];
-      for (const fraction of stops) {
-        const reveal = Math.max(0, Math.min(1, (fraction - emergeFrom) / (emergeTo - emergeFrom)));
-        const alpha = (selected ? 0.55 : 0.3) * reveal * (1 - fraction * 0.88);
-        gradient.addColorStop(
-          (fraction - segment.fromFraction) / (segment.toFraction - segment.fromFraction),
-          `${color}${Math.round(alpha * 255)
-            .toString(16)
-            .padStart(2, "0")}`,
-        );
-      }
-      context.globalAlpha = 0.12;
-      line(context, [segment.from, segment.to], gradient, 3.2);
-      context.globalAlpha = 1;
-      line(context, [segment.from, segment.to], gradient, 1);
-    }
-  }
-
   for (const { source, position } of points) {
     const color = toneFor(source).color;
     const selected = source.id === scene.selected;
@@ -186,7 +147,7 @@ export function drawSpace(
       position,
       (selected ? 48 : 35) + pulse * 32,
       color,
-      (selected ? 0.17 : 0.09) + pulse * 0.25,
+      (selected ? 0.23 : 0.09) + pulse * 0.25,
     );
     if (pulse > 0.03)
       ring(
@@ -206,49 +167,32 @@ export function drawSpace(
       5.2,
     );
     gradient.addColorStop(0, pulse > 0.2 ? "#fffef4" : selected ? "#fff8e9" : "#edece0");
-    gradient.addColorStop(0.3, color);
-    gradient.addColorStop(1, `${color}65`);
+    gradient.addColorStop(selected ? 0.18 : 0.3, color);
+    if (selected) gradient.addColorStop(0.65, color);
+    gradient.addColorStop(1, `${color}${selected ? "cc" : "65"}`);
     circle(context, position, 5.2, gradient);
   }
 
   if (scene.preview) {
     const draft = scene.preview.source;
     const landing = snapSource(draft);
-    const previewPosition = (source: Source) =>
-      scene.preview?.resizing
-        ? tailLayout(
-            {
-              source,
-              position: locate(source, size),
-              length: durationFor(source, scene.document.sources),
-            },
-            size,
-          ).end
-        : locate(source, size);
-    const from = previewPosition(draft),
-      target = previewPosition(landing);
+    const from = locate(draft, size),
+      target = locate(landing, size);
     const color = scene.preview.collisions.length ? "#ef9b86" : "#dce6ce";
     context.setLineDash([2, 5]);
     line(
       context,
-      scene.preview.resizing
-        ? [
-            { x: target.x, y: bounds.top },
-            { x: target.x, y: bounds.top + bounds.height + 10 },
-          ]
-        : [
-            { x: bounds.left, y: target.y },
-            { x: target.x, y: target.y },
-            { x: target.x, y: bounds.top + bounds.height + 10 },
-          ],
+      [
+        { x: bounds.left, y: target.y },
+        { x: target.x, y: target.y },
+        { x: target.x, y: bounds.top + bounds.height + 10 },
+      ],
       `${color}3d`,
       0.7,
     );
     context.setLineDash([]);
-    if (!scene.preview.resizing) {
-      line(context, [from, target], `${color}66`, 0.75);
-      ring(context, target, 5.5, `${color}aa`, 0.9);
-      circle(context, target, 1.5, `${color}bb`);
-    }
+    line(context, [from, target], `${color}66`, 0.75);
+    ring(context, target, 5.5, `${color}aa`, 0.9);
+    circle(context, target, 1.5, `${color}bb`);
   }
 }

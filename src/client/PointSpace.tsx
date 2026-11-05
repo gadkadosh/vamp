@@ -1,15 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent } from "react";
 import { drawSpace } from "./drawSpace";
-import { STEP_COUNT } from "./score";
-import {
-  durationFor,
-  findCollisions,
-  moveSource,
-  resizeSource,
-  sourceLabel,
-  toneFor,
-} from "./playground";
+import { findCollisions, moveSource, sourceLabel } from "./playground";
 import type {
   CollisionFeedback,
   Constellation,
@@ -17,7 +9,7 @@ import type {
   Source,
   SpatialNote,
 } from "./playground";
-import { fieldBounds, layoutSources, pick, tailLayout, SETTLE_MS } from "./space";
+import { layoutSources, pick, SETTLE_MS } from "./space";
 import type { SettlingMotion, Size } from "./space";
 
 type Props = {
@@ -40,16 +32,12 @@ type Gesture = {
   grab: { x: number; y: number };
   last: { x: number; y: number };
   paint: boolean;
-  resizing: boolean;
-  startX: number;
-  length: number;
 };
 
 export function PointSpace(props: Props) {
   const surface = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const elements = useRef(new Map<number, HTMLButtonElement>());
-  const lengthElement = useRef<HTMLButtonElement>(null);
   const [size, setSize] = useState<Size>({ width: 1, height: 1 });
   const gesture = useRef<Gesture | null>(null);
   const motion = useRef<SettlingMotion | null>(null);
@@ -73,15 +61,12 @@ export function PointSpace(props: Props) {
       ? {
           source: draft,
           collisions: findCollisions(props.document, draft),
-          resizing: gesture.current?.resizing,
         }
       : null,
   };
   const latest = useRef(scene);
   latest.current = scene;
   const lights = layoutSources(sources, size, motion.current, performance.now());
-  const selectedLight = lights.find((point) => point.source.id === scene.selected);
-  const handlePosition = selectedLight ? tailLayout(selectedLight, size).end : null;
 
   useEffect(() => {
     const keyDown = () => setKeyboard(true);
@@ -129,12 +114,6 @@ export function PointSpace(props: Props) {
           target.style.top = `${position.y}px`;
         }
       }
-      const selected = points.find((point) => point.source.id === scene.selected);
-      if (selected && lengthElement.current) {
-        const handle = tailLayout(selected, size).end;
-        lengthElement.current.style.left = `${handle.x}px`;
-        lengthElement.current.style.top = `${handle.y}px`;
-      }
       frame = requestAnimationFrame(draw);
     }
     draw();
@@ -171,12 +150,7 @@ export function PointSpace(props: Props) {
   function pointerDown(event: PointerEvent<HTMLDivElement>) {
     if (gesture.current || (event.button !== 0 && event.button !== 2)) return;
     const target = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-light]");
-    const lengthTarget = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-length]");
-    const id = lengthTarget
-      ? Number(lengthTarget.dataset.length)
-      : target
-        ? Number(target.dataset.light)
-        : null;
+    const id = target ? Number(target.dataset.light) : null;
     const source = props.document.sources.find((source) => source.id === id);
     if (event.button === 2) {
       if (source) {
@@ -187,7 +161,7 @@ export function PointSpace(props: Props) {
     }
     const position = coordinates(event);
     const bounds = surface.current!.getBoundingClientRect();
-    const hit = (lengthTarget ?? target)?.getBoundingClientRect();
+    const hit = target?.getBoundingClientRect();
     const center = hit
       ? { x: hit.left + hit.width / 2 - bounds.left, y: hit.top + hit.height / 2 - bounds.top }
       : position;
@@ -199,9 +173,6 @@ export function PointSpace(props: Props) {
       grab: { x: position.x - center.x, y: position.y - center.y },
       last: position,
       paint,
-      resizing: Boolean(lengthTarget),
-      startX: position.x,
-      length: source ? durationFor(source, props.document.sources) : 1,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
     setDragging(true);
@@ -212,7 +183,6 @@ export function PointSpace(props: Props) {
     let initial = source ?? newSource(position.x, position.y);
     if (
       source &&
-      !lengthTarget &&
       motion.current?.to.id === source.id &&
       performance.now() - motion.current.started < SETTLE_MS
     )
@@ -220,7 +190,7 @@ export function PointSpace(props: Props) {
     motion.current = null;
     updateDraft(initial);
     props.onSelect(source?.id ?? null);
-    if (source) (lengthTarget ?? target)?.focus();
+    if (source) target?.focus();
     else surface.current?.focus();
   }
   function pointerMove(event: PointerEvent<HTMLDivElement>) {
@@ -233,18 +203,10 @@ export function PointSpace(props: Props) {
         active.last = position;
       }
     } else if (draftRef.current) {
-      updateDraft(
-        active.resizing
-          ? resizeSource(
-              draftRef.current,
-              active.length + (position.x - active.startX) / (fieldBounds(size).width / STEP_COUNT),
-              active.before.sources,
-            )
-          : {
-              ...draftRef.current,
-              ...pick(position.x - active.grab.x, position.y - active.grab.y, size),
-            },
-      );
+      updateDraft({
+        ...draftRef.current,
+        ...pick(position.x - active.grab.x, position.y - active.grab.y, size),
+      });
     }
   }
   function finish(event: PointerEvent<HTMLDivElement>) {
@@ -262,15 +224,6 @@ export function PointSpace(props: Props) {
       } else settle(source, previous);
       updateDraft(null);
     }
-  }
-  function changeLength(source: Source, delta: number) {
-    props.onPlace(
-      resizeSource(
-        source,
-        durationFor(source, props.document.sources) + delta,
-        props.document.sources,
-      ),
-    );
   }
   function keyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.ctrlKey || event.metaKey || event.altKey) return;
@@ -290,9 +243,6 @@ export function PointSpace(props: Props) {
     } else if (event.key === "Enter") {
       event.preventDefault();
       add(size.width * 0.5, size.height * 0.5, true);
-    } else if (source && (event.key === "[" || event.key === "]")) {
-      event.preventDefault();
-      changeLength(source, event.key === "]" ? 1 : -1);
     } else if (moves[event.key]) {
       event.preventDefault();
       if (!source) {
@@ -309,7 +259,7 @@ export function PointSpace(props: Props) {
   return (
     <div
       ref={surface}
-      className={`point-space${dragging ? " is-dragging" : ""}${dragging && gesture.current?.resizing ? " is-resizing" : ""}${keyboard ? " is-keyboard" : ""}`}
+      className={`point-space${dragging ? " is-dragging" : ""}${keyboard ? " is-keyboard" : ""}`}
       tabIndex={0}
       role="group"
       aria-label="Interactive constellation"
@@ -344,44 +294,13 @@ export function PointSpace(props: Props) {
           }}
         />
       ))}
-      {selectedLight && handlePosition && (
-        <button
-          key={`length-${selectedLight.source.id}`}
-          ref={lengthElement}
-          type="button"
-          data-length={selectedLight.source.id}
-          className="length-hit"
-          style={{
-            left: handlePosition.x,
-            top: handlePosition.y,
-            color: toneFor(selectedLight.source).color,
-          }}
-          title="Drag the end to change ringing time"
-          aria-label={`Resize light ${selectedLight.source.id}: ${Math.round(selectedLight.length)} timing steps. Left and right arrows adjust length.`}
-          onKeyDown={(event) => {
-            if (event.ctrlKey || event.metaKey || event.altKey) return;
-            if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-              event.stopPropagation();
-              event.preventDefault();
-              changeLength(selectedLight.source, event.key === "ArrowRight" ? 1 : -1);
-            } else if (event.key === "Enter") {
-              event.stopPropagation();
-              event.preventDefault();
-              surface.current?.focus();
-            }
-          }}
-        >
-          <span aria-hidden="true" />
-        </button>
-      )}
       <p id="space-instructions" className="sr-only">
         Left to right is time; bottom to top is pitch. Tap empty space to add a light. Drag a light
         to move it. Alignment guides and a landing point appear only while placing or dragging;
         release to settle on the previewed beat and pitch. Occupied bass beats and identical sounds
         are rejected. Shift-drag to scatter lights; right-click to remove. Keyboard: Enter adds;
-        arrows move one timing step or pitch; brackets shorten or lengthen the selection. Select a
-        light and drag its end-cap to change ringing time. The end-cap is keyboard-focusable; left
-        and right arrows resize it. Keyboard focus uses corner marks. Delete removes; Escape
+        arrows select a light, then move it one timing step or pitch. Select a light to duplicate or
+        remove it using the buttons below. Keyboard focus uses corner marks. Delete removes; Escape
         deselects; Space plays or pauses. Tab leaves the surface and its selected controls. Undo
         restores the previous gesture.
       </p>

@@ -116,7 +116,6 @@ export type TimedNote = {
   instrument: InstrumentId;
   row: number;
   step: number;
-  length: number;
   gain?: number;
 };
 export type Pattern = boolean[][];

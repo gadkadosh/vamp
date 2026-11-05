@@ -14,11 +14,7 @@ export class Sequencer {
   private channels = new Map<InstrumentId, GainNode>();
   private enabled = { ...DEFAULT_ENABLED };
   private monoVoices = new Map<InstrumentId, { row: number; stop: (time: number) => void }>();
-  private timedVoices = new Set<{
-    instrument: InstrumentId;
-    end: number;
-    stop: (time: number) => void;
-  }>();
+  private timedVoices = new Map<InstrumentId, (time: number) => void>();
   private scheduledUntil = 0;
   private volume = DEFAULT_VOLUME;
   private startTime: number | null = null;
@@ -174,39 +170,20 @@ export class Sequencer {
       }
     }
     starts.sort((a, b) => a.time - b.time);
-    const stopDue = (time: number) => {
-      for (const voice of this.timedVoices) {
-        if (voice.end <= time) {
-          voice.stop(Math.max(now, voice.end));
-          this.timedVoices.delete(voice);
-        }
-      }
-    };
     for (const { note, time } of starts) {
-      stopDue(time);
       const instrument = INSTRUMENTS.find(({ id }) => id === note.instrument)!;
       const channel = this.channels.get(instrument.id)!;
-      if (!VOICE_POLYPHONY[instrument.id]) {
-        for (const voice of this.timedVoices) {
-          if (voice.instrument === instrument.id) {
-            voice.stop(time);
-            this.timedVoices.delete(voice);
-          }
-        }
-      }
-      this.timedVoices.add({
-        instrument: instrument.id,
-        end: time + note.length * STEP_SECONDS,
-        stop: instrument.start(
-          this.context!,
-          channel,
-          instrument.notes[note.row].frequency,
-          time,
-          note.gain,
-        ),
-      });
+      if (!VOICE_POLYPHONY[instrument.id]) this.timedVoices.get(instrument.id)?.(time);
+      const stop = instrument.start(
+        this.context!,
+        channel,
+        instrument.notes[note.row].frequency,
+        time,
+        note.gain,
+      );
+      // Polyphonic notes finish naturally; only bass needs damping at the next onset.
+      if (!VOICE_POLYPHONY[instrument.id]) this.timedVoices.set(instrument.id, stop);
     }
-    stopDue(until);
     // A rolling, half-open audio-time window prevents duplicate strikes, handles
     // fractional onsets, and skips missed events after a background-tab stall.
     this.scheduledUntil = until;

@@ -8,7 +8,7 @@ import {
   togglePatternCell,
 } from "../src/client/score";
 import type { InstrumentId, Patterns, TimedNote } from "../src/client/score";
-import { compose, gainForEnergy, placeSource } from "../src/client/playground";
+import { compose, gainForEnergy } from "../src/client/playground";
 import type { Constellation } from "../src/client/playground";
 import { Sequencer } from "../src/client/sequencer";
 import { carriers, channel, plucks, routesTo, TestAudioContext } from "./audio-context";
@@ -87,61 +87,27 @@ const floatingLight: Constellation = {
 };
 
 test.each([
-  ["bass", 2, "keys"],
-  ["mallet", 7, "keys"],
-  ["keys", 11, "keys"],
-  ["nylon", 11, "nylon"],
-  ["glass", 17, "keys"],
+  ["bass", 2, "keys", 2.8, 1],
+  ["mallet", 7, "keys", 0.9, 1],
+  ["keys", 11, "keys", 2.43, 4],
+  ["nylon", 11, "nylon", 2.2, 1],
+  ["glass", 17, "keys", 2.83, 3],
 ] as const)(
-  "editable length damps %s at its gate without shifting or retriggering the note",
-  async (id, tone, voice) => {
-    const notes = compose({
-      voice,
-      sources: [
-        { id: 1, step: 0, tone, length: 1 },
-        { id: 2, step: 8, tone, length: 4 },
-      ],
-    });
-    const { context } = await startTimed(() => notes);
-    runUntil(context, 0.05 + 12 * STEP_SECONDS + 0.1);
+  "%s rings to its natural end without a fixed note-length cutoff",
+  async (id, tone, voice, seconds, count) => {
+    const { context } = await startTimed(() =>
+      compose({ voice, sources: [{ id: 1, step: 0, tone }] }),
+    );
+    runUntil(context, 3.2);
     const voices = sources(context, id);
-    const first = voices.find((source) => source.start.mock.calls[0][0] === 0.05)!;
-    const second = voices.find(
-      (source) => source.start.mock.calls[0][0] === 0.05 + 8 * STEP_SECONDS,
-    )!;
-    expect(first.stop.mock.calls.at(-1)![0]).toBeCloseTo(0.05 + STEP_SECONDS, 10);
-    expect(second.stop.mock.calls.at(-1)![0]).toBeCloseTo(0.05 + 12 * STEP_SECONDS, 10);
-    expect(first.start).toHaveBeenCalledTimes(1);
-    expect(second.start).toHaveBeenCalledTimes(1);
+    expect(voices).toHaveLength(count);
+    for (const source of voices) {
+      expect(source.start).toHaveBeenCalledExactlyOnceWith(0.05);
+      expect(source.stop).toHaveBeenCalledTimes(1);
+    }
+    expect(voices[0].stop.mock.calls[0][0]).toBeCloseTo(0.05 + seconds, 10);
   },
 );
-
-test.each([
-  ["mallet", 7],
-  ["glass", 17],
-] as const)("the default %s tail preserves its original natural decay", async (id, tone) => {
-  const { context } = await startTimed(() =>
-    compose({ voice: "keys", sources: [{ id: 1, step: 0, tone }] }),
-  );
-  runUntil(context, 3.2);
-  const voices = carriers(context, id);
-  expect(voices).toHaveLength(id === "mallet" ? 1 : 3);
-  for (const voice of voices) expect(voice.stop).toHaveBeenCalledTimes(1);
-  expect(voices[0].stop.mock.calls[0][0]).toBeCloseTo(0.05 + (id === "mallet" ? 0.9 : 2.83), 10);
-});
-
-test("a committed length edit reaches the next unscheduled strike without changing its onset", async () => {
-  let document: Constellation = { voice: "keys", sources: [{ id: 1, step: 8, tone: 7 }] };
-  const { context } = await startTimed(() => compose(document));
-  const result = placeSource(document, { ...document.sources[0], length: 1 });
-  expect(result.accepted).toBe(true);
-  document = result.document;
-  runUntil(context, 2);
-  const strikes = carriers(context, "mallet");
-  expect(strikes).toHaveLength(1);
-  expect(strikes[0].start.mock.calls[0][0]).toBeCloseTo(0.05 + 8 * STEP_SECONDS, 10);
-  expect(strikes[0].stop.mock.calls.at(-1)![0]).toBeCloseTo(0.05 + 9 * STEP_SECONDS, 10);
-});
 
 test.each([
   ["bass", 2, "keys"],
@@ -246,35 +212,38 @@ test("live timing edits use the next unscheduled audio window", async () => {
   );
 });
 
-test("fractional gates can ring across the loop seam without being cut short", async () => {
-  const notes: TimedNote[] = [{ instrument: "bass", row: 5, step: 31.75, length: 4 }];
+test("notes ring naturally across the loop seam without being cut short", async () => {
+  const notes: TimedNote[] = [{ instrument: "bass", row: 5, step: 31.75 }];
   const { context } = await startTimed(() => notes);
   runUntil(context, 0.05 + 36 * STEP_SECONDS);
   const strings = plucks(context, "bass");
   expect(strings).toHaveLength(1);
-  expect(strings[0].stop.mock.calls.at(-1)![0]).toBeCloseTo(0.05 + 35.75 * STEP_SECONDS, 10);
+  expect(strings[0].start).toHaveBeenCalledWith(0.05 + 31.75 * STEP_SECONDS);
+  expect(strings[0].stop).toHaveBeenCalledExactlyOnceWith(0.05 + 31.75 * STEP_SECONDS + 2.8);
 });
 
-test("bass notes damp on the next onset and at their exact gate end", async () => {
+test("bass damps only on the next bass onset, including across the loop seam", async () => {
   const notes: TimedNote[] = [
-    { instrument: "bass", row: 0, step: 0.37, length: 3 },
-    { instrument: "bass", row: 1, step: 0.6, length: 0.3 },
+    { instrument: "bass", row: 0, step: 0 },
+    { instrument: "keys", row: 0, step: 31.25 },
+    { instrument: "bass", row: 1, step: 31 },
   ];
   const { context } = await startTimed(() => notes);
-  runUntil(context, 0.4);
+  runUntil(context, 0.05 + 32 * STEP_SECONDS + 0.1);
   const strings = plucks(context, "bass");
-  expect(strings).toHaveLength(2);
-  expect(strings[0].stop).toHaveBeenCalledWith(0.05 + 0.6 * STEP_SECONDS);
-  expect(strings[1].stop.mock.calls.at(-1)![0]).toBeCloseTo(0.05 + (0.6 + 0.3) * STEP_SECONDS, 10);
+  expect(strings).toHaveLength(3);
+  expect(strings[0].stop).toHaveBeenCalledExactlyOnceWith(0.05 + 2.8);
+  expect(strings[1].stop.mock.calls.at(-1)![0]).toBeCloseTo(0.05 + 32 * STEP_SECONDS, 10);
+  expect(strings[2].stop).toHaveBeenCalledExactlyOnceWith(0.05 + 32 * STEP_SECONDS + 2.8);
 });
 
-test("felt and nylon chords keep independent gates when simultaneous and later notes overlap", async () => {
+test("felt and nylon chords decay independently when simultaneous and later notes overlap", async () => {
   for (const id of ["keys", "nylon"] as const) {
     sequencer?.dispose();
     const notes: TimedNote[] = [
-      { instrument: id, row: 0, step: 0, length: 3 },
-      { instrument: id, row: 1, step: 0, length: 1 },
-      { instrument: id, row: 2, step: 1, length: 2 },
+      { instrument: id, row: 0, step: 0 },
+      { instrument: id, row: 1, step: 0 },
+      { instrument: id, row: 2, step: 1 },
     ];
     const { engine, context } = await startTimed(() => notes);
     engine.setEnabled(id, true);
@@ -287,12 +256,12 @@ test("felt and nylon chords keep independent gates when simultaneous and later n
     expect(fundamentals[0].start).toHaveBeenCalledWith(0.05);
     expect(fundamentals[1].start).toHaveBeenCalledWith(0.05);
     expect(fundamentals[2].start.mock.calls[0][0]).toBeCloseTo(0.05 + STEP_SECONDS, 10);
-    // The first sound still has only its natural source stop, not a premature damper.
-    expect(fundamentals[0].stop).toHaveBeenCalledTimes(1);
-    expect(fundamentals[1].stop.mock.calls.at(-1)![0]).toBeCloseTo(0.05 + STEP_SECONDS, 10);
-    runUntil(context, 0.7);
-    expect(fundamentals[0].stop.mock.calls.at(-1)![0]).toBeCloseTo(0.05 + 3 * STEP_SECONDS, 10);
-    expect(fundamentals[2].stop.mock.calls.at(-1)![0]).toBeCloseTo(0.05 + 3 * STEP_SECONDS, 10);
+    runUntil(context, 3);
+    const seconds = id === "keys" ? 2.43 : 2.2;
+    for (const source of fundamentals) {
+      expect(source.stop).toHaveBeenCalledTimes(1);
+      expect(source.stop.mock.calls[0][0] - source.start.mock.calls[0][0]).toBeCloseTo(seconds, 10);
+    }
   }
 });
 

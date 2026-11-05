@@ -2,28 +2,26 @@ import { INSTRUMENTS, STEP_COUNT, VOICE_POLYPHONY } from "./score";
 import type { InstrumentId, TimedNote } from "./score";
 
 const MATERIALS = [
-  { instrument: "bass", color: "#94bfa5", gate: 4, notes: ["C2", "D2", "E2", "G2", "A2", "C3"] },
-  { instrument: "mallet", color: "#e9bd7e", gate: 6, notes: ["C4", "D4", "E4"] },
+  { instrument: "bass", color: "#94bfa5", notes: ["C2", "D2", "E2", "G2", "A2", "C3"] },
+  { instrument: "mallet", color: "#e9bd7e", notes: ["C4", "D4", "E4"] },
   {
     instrument: "keys",
     color: "#e5a599",
-    gate: 2,
     notes: ["F4", "G4", "A4", "B4", "C5", "D5", "E5"],
   },
-  { instrument: "glass", color: "#a3bfe7", gate: 17, notes: ["G5", "A5", "C6"] },
+  { instrument: "glass", color: "#a3bfe7", notes: ["G5", "A5", "C6"] },
 ] as const;
 export const TONES = MATERIALS.flatMap((material) => {
   const instrument = INSTRUMENTS.find(({ id }) => id === material.instrument)!;
   return material.notes.map((name) => ({
     instrument: material.instrument,
     color: material.color,
-    gate: material.gate,
     row: instrument.notes.findIndex((note) => note.name === name),
     note: instrument.notes.find((note) => note.name === name)!,
   }));
 });
 // Drafts move continuously; committed lights land on rhythmic and pitched positions.
-export type Source = { id: number; step: number; tone: number; length?: number; energy?: number };
+export type Source = { id: number; step: number; tone: number; energy?: number };
 export const energyFor = (source: Source) => clamp(source.energy ?? 0.5);
 // Neutral intensity preserves the original loudness.
 export const gainForEnergy = (energy: number) => 0.18 + clamp(energy) * 1.64;
@@ -42,31 +40,11 @@ export const wrapStep = (step: number) => ((step % STEP_COUNT) + STEP_COUNT) % S
 export const toneFor = (source: Source) =>
   TONES[clamp(Math.round(source.tone), 0, TONES.length - 1)];
 export const soundingStep = (step: number) => wrapStep(Math.round(step));
-// Struck defaults (6 / 17 steps) let the original mallet / glass decay finish.
-export const lengthFor = (source: Source) =>
-  clamp(source.length ?? toneFor(source).gate, 1, STEP_COUNT);
-export function maxLengthFor(source: Source, sources: Source[]): number {
-  if (toneFor(source).instrument !== "bass") return STEP_COUNT;
-  return sources.reduce((limit, other) => {
-    if (other.id === source.id || toneFor(other).instrument !== "bass") return limit;
-    const gap = wrapStep(soundingStep(other.step) - soundingStep(source.step));
-    return gap ? Math.min(limit, gap) : limit;
-  }, STEP_COUNT);
-}
-export const durationFor = (source: Source, sources: Source[]) =>
-  Math.min(lengthFor(source), maxLengthFor(source, sources));
-export const resizeSource = (source: Source, length: number, sources: Source[]): Source => ({
-  ...source,
-  length: clamp(length, 1, maxLengthFor(source, sources)),
-});
 export const snapSource = (source: Source): Source => ({
   ...source,
   step: soundingStep(source.step),
   tone: clamp(Math.round(source.tone), 0, TONES.length - 1),
   ...(source.energy === undefined ? {} : { energy: clamp(source.energy) }),
-  ...(source.length === undefined
-    ? {}
-    : { length: clamp(Math.round(source.length), 1, STEP_COUNT) }),
 });
 
 export function createConstellation(): Constellation {
@@ -115,8 +93,7 @@ export function placeSource(document: Constellation, candidate: Source): Placeme
     previous &&
     previous.step === source.step &&
     previous.tone === source.tone &&
-    energyFor(previous) === energyFor(source) &&
-    lengthFor(previous) === lengthFor(source)
+    energyFor(previous) === energyFor(source)
   ) {
     return { document, source: previous, collisions: [], accepted: true };
   }
@@ -134,7 +111,6 @@ export function compose(document: Constellation): SpatialNote[] {
       instrument: instrumentFor(source, document.voice),
       row: toneFor(source).row,
       step: soundingStep(source.step),
-      length: durationFor(source, document.sources),
       ...(source.energy === undefined ? {} : { gain: gainForEnergy(source.energy) }),
     }))
     .sort((a, b) => a.step - b.step);
@@ -150,5 +126,5 @@ export function moveSource(source: Source, stepDelta: number, toneDelta: number)
 
 export function sourceLabel(source: Source, voice: Constellation["voice"]): string {
   const instrument = INSTRUMENTS.find(({ id }) => id === instrumentFor(source, voice))!;
-  return `Note ${source.id}: ${instrument.name}, ${toneFor(source).note.name}, beat position ${soundingStep(source.step) + 1} of ${STEP_COUNT}, rings for up to ${Math.round(lengthFor(source))} timing steps${source.energy === undefined ? "" : `, intensity ${Math.round(energyFor(source) * 100)} percent`}`;
+  return `Note ${source.id}: ${instrument.name}, ${toneFor(source).note.name}, beat position ${soundingStep(source.step) + 1} of ${STEP_COUNT}${source.energy === undefined ? "" : `, intensity ${Math.round(energyFor(source) * 100)} percent`}`;
 }

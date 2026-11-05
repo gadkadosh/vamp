@@ -303,9 +303,7 @@ function App() {
             <span className="live-dot" />
             {playing ? "A shared loop, unfolding." : "The space is listening."}
           </div>
-          <div className="gesture-hint">
-            {selected ? "Drag end to change length" : "Tap to add · Drag to move"}
-          </div>
+          <div className="gesture-hint">Tap to add · Drag to move</div>
           {document.sources.length === 0 && (
             <div className="empty-invitation" aria-hidden="true">
               <span>＋</span>A first note is all it takes.
@@ -337,11 +335,8 @@ function App() {
               <div>
                 <dt>Let it ring</dt>
                 <dd>
-                  A light starts the note; its tail is how long it may ring. Select a light and drag
-                  small end-cap to change length. A vertical guide previews its snapped ending;
-                  release to settle. Brackets shorten or lengthen the selection one step at a time.
-                  Tails continue across the loop edge. Bass ends at the next bass note. Sounds decay
-                  naturally; a longer tail does not hold them at full volume.
+                  Each light starts a sound that fades naturally, even across the loop edge. Bass is
+                  damped when the next bass note begins. A light glows briefly when it sounds.
                 </dd>
               </div>
               <div>
@@ -360,9 +355,10 @@ function App() {
                 </dd>
               </div>
               <div>
-                <dt>Take something away</dt>
+                <dt>Keep or take away</dt>
                 <dd>
-                  Select a note and use the bin below, or right-click it. Undo brings it back.
+                  Tap a light to select it, then use the buttons below to duplicate or remove it.
+                  You can also right-click to remove. Undo brings it back.
                 </dd>
               </div>
             </dl>
