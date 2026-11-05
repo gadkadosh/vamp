@@ -194,6 +194,9 @@ h1 {
   cursor: grabbing;
 }
 .point-space:focus-visible {
+  outline: none;
+}
+.point-space.is-keyboard:focus-visible {
   outline: 1px solid var(--line);
 }
 .light-hit {

@@ -358,7 +358,8 @@ function App() {
                 <dt>Keep or take away</dt>
                 <dd>
                   Tap a light to select it, then use the buttons below to duplicate or remove it.
-                  You can also right-click to remove. Undo brings it back.
+                  Tap it again or press Escape to deselect. You can also right-click to remove. Undo
+                  brings it back.
                 </dd>
               </div>
             </dl>

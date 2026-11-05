@@ -28,7 +28,7 @@ Dragging is a local preview: the original music continues until a valid release,
 
 ### Gestures
 
-- **Click empty space:** add a light at its magnetic landing point. **Drag a light:** preview a new timing and pitch, then release to commit.
+- **Click empty space:** add a light at its magnetic landing point. **Tap a light:** select it; tap it again to deselect. **Drag a light:** preview a new timing and pitch, then release to commit. Small pointer movements count as taps, not edits.
 - **Shift-drag empty space:** scatter a trail of lights as one undoable gesture.
 - **Right-click a light**, or select it and use the lower bin button, to remove it. The duplicate button adds a copy four steps later.
 - **Undo / Redo:** buttons or Cmd/Ctrl Z / Cmd/Ctrl Shift Z. Each drag or scattered trail is one history entry. Clear and reset are also undoable.

@@ -32,6 +32,8 @@ type Gesture = {
   grab: { x: number; y: number };
   last: { x: number; y: number };
   paint: boolean;
+  moved: boolean;
+  deselect: boolean;
 };
 
 export function PointSpace(props: Props) {
@@ -173,6 +175,8 @@ export function PointSpace(props: Props) {
       grab: { x: position.x - center.x, y: position.y - center.y },
       last: position,
       paint,
+      moved: false,
+      deselect: source?.id === props.selected,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
     setDragging(true);
@@ -203,6 +207,8 @@ export function PointSpace(props: Props) {
         active.last = position;
       }
     } else if (draftRef.current) {
+      active.moved ||= Math.hypot(position.x - active.last.x, position.y - active.last.y) > 5;
+      if (!active.moved) return;
       updateDraft({
         ...draftRef.current,
         ...pick(position.x - active.grab.x, position.y - active.grab.y, size),
@@ -219,8 +225,14 @@ export function PointSpace(props: Props) {
       const source = draftRef.current;
       const previous = active.before.sources.find(({ id }) => id === source.id);
       if (event.type === "pointerup") {
-        const result = props.onPlace(source);
-        settle(source, result.accepted ? result.source : previous);
+        if (previous && !active.moved) {
+          settle(source, previous);
+          props.onSelect(active.deselect ? null : previous.id);
+          if (active.deselect) surface.current?.focus();
+        } else {
+          const result = props.onPlace(source);
+          settle(source, result.accepted ? result.source : previous);
+        }
       } else settle(source, previous);
       updateDraft(null);
     }
@@ -288,21 +300,22 @@ export function PointSpace(props: Props) {
           aria-pressed={scene.selected === source.id}
           tabIndex={props.selected === source.id ? 0 : -1}
           onFocus={() => props.onSelect(source.id)}
-          onClick={() => {
-            if (props.document.sources.some(({ id }) => id === source.id))
+          onClick={(event) => {
+            // Pointer selection is resolved on release; retain assistive click activation.
+            if (event.detail === 0 && props.document.sources.some(({ id }) => id === source.id))
               props.onSelect(source.id);
           }}
         />
       ))}
       <p id="space-instructions" className="sr-only">
-        Left to right is time; bottom to top is pitch. Tap empty space to add a light. Drag a light
-        to move it. Alignment guides and a landing point appear only while placing or dragging;
-        release to settle on the previewed beat and pitch. Occupied bass beats and identical sounds
-        are rejected. Shift-drag to scatter lights; right-click to remove. Keyboard: Enter adds;
-        arrows select a light, then move it one timing step or pitch. Select a light to duplicate or
-        remove it using the buttons below. Keyboard focus uses corner marks. Delete removes; Escape
-        deselects; Space plays or pauses. Tab leaves the surface and its selected controls. Undo
-        restores the previous gesture.
+        Left to right is time; bottom to top is pitch. Tap empty space to add a light. Tap a
+        selected light again to deselect it. Drag a light to move it. Alignment guides and a landing
+        point appear only while placing or dragging; release to settle on the previewed beat and
+        pitch. Occupied bass beats and identical sounds are rejected. Shift-drag to scatter lights;
+        right-click to remove. Keyboard: Enter adds; arrows select a light, then move it one timing
+        step or pitch. Select a light to duplicate or remove it using the buttons below. Keyboard
+        focus uses corner marks. Delete removes; Escape deselects; Space plays or pauses. Tab leaves
+        the surface and its selected controls. Undo restores the previous gesture.
       </p>
     </div>
   );
