@@ -25,6 +25,7 @@ type IconName =
   | "sound"
   | "mute"
   | "duplicate";
+
 function Icon({ name }: { name: IconName }) {
   return (
     <svg
@@ -108,29 +109,36 @@ export function App() {
       engine.current = null;
     };
   }, []);
+
   useEffect(() => {
     scoreRef.current = score;
   }, [score]);
+
   useEffect(() => {
     if (!message) return;
     const timer = setTimeout(() => setMessage(""), 4000);
     return () => clearTimeout(timer);
   }, [message]);
+
   useEffect(() => {
     if (help) guide.current?.showModal();
     else guide.current?.close();
   }, [help]);
+
   useEffect(() => {
     if (!menu) return;
+
     function outside(event: globalThis.PointerEvent) {
       if (!menuAnchor.current?.contains(event.target as Node)) setMenu(false);
     }
+
     function keyDown(event: globalThis.KeyboardEvent) {
       if (event.key === "Escape") {
         setMenu(false);
         menuTrigger.current?.focus();
       }
     }
+
     document.addEventListener("pointerdown", outside);
     document.addEventListener("keydown", keyDown);
     return () => {
@@ -143,6 +151,7 @@ export function App() {
     historyRef.current = next;
     setHistory(next);
   }
+
   function cancelGesture() {
     const active = gesture.current;
     if (!active) return false;
@@ -155,6 +164,7 @@ export function App() {
     active.cancel();
     return true;
   }
+
   function beginGesture(cancel: () => void) {
     cancelGesture();
     const active = { before: historyRef.current, selected: selectedId, cancel };
@@ -180,6 +190,7 @@ export function App() {
       },
     };
   }
+
   function edit(change: (document: Pattern) => Pattern) {
     cancelGesture();
     const previous = historyRef.current;
@@ -192,6 +203,7 @@ export function App() {
     });
     return next;
   }
+
   function place(candidate: Note, preview = false): Placement {
     if (!preview) cancelGesture();
     const current = historyRef.current.present;
@@ -214,6 +226,7 @@ export function App() {
     }
     return result;
   }
+
   function undo() {
     if (cancelGesture()) return;
     const current = historyRef.current;
@@ -226,6 +239,7 @@ export function App() {
     setFeedback(null);
     setMessage("One gesture back.");
   }
+
   function redo() {
     cancelGesture();
     const current = historyRef.current;
@@ -238,6 +252,7 @@ export function App() {
     setFeedback(null);
     setMessage("One gesture forward.");
   }
+
   useEffect(() => {
     function keyDown(event: globalThis.KeyboardEvent) {
       if (
@@ -250,6 +265,7 @@ export function App() {
       if (event.shiftKey) redo();
       else undo();
     }
+
     window.addEventListener("keydown", keyDown);
     return () => window.removeEventListener("keydown", keyDown);
   }, []);

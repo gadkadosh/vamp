@@ -12,14 +12,15 @@ const candidate = { id: 2, step: 12.31, tone: 11.18 };
 
 type Gradient = { stops: { offset: number; color: string }[] };
 type Circle = { x: number; y: number; radius: number };
+
 function recordingContext() {
   type Point = { x: number; y: number };
   const strokes: { points: Point[]; circle: Circle | null; dash: number[]; color: string }[] = [];
   const fills: { circle: Circle | null; color: string | Gradient }[] = [];
   const rectangles: number[][] = [];
-  let points: Point[] = [],
-    circle: Circle | null = null,
-    dash: number[] = [];
+  let points: Point[] = [];
+  let circle: Circle | null = null;
+  let dash: number[] = [];
   const gradient = (): Gradient & { addColorStop: (offset: number, color: string) => void } => ({
     stops: [],
     addColorStop(offset, color) {
@@ -78,6 +79,7 @@ const scene: Scene = {
 };
 
 const onsetTime = 0.05 + 2 * STEP_SECONDS;
+
 function playback(time = onsetTime): Playback {
   return {
     time,
@@ -134,8 +136,8 @@ test.each([390, 900])(
 );
 
 test("selection intensifies the material without adding a ring or moving the light", () => {
-  const idle = render(scene),
-    selected = render({ ...scene, selected: 1 });
+  const idle = render(scene);
+  const selected = render({ ...scene, selected: 1 });
   const color = toneFor(document.notes[0]).color;
   expect(selected.strokes).toEqual([]);
   expect(selected.fills[1]).toMatchObject({
@@ -178,8 +180,8 @@ test("reduced motion uses illumination, not an expanding wave, growing core, or 
 test("placement reveals both full snapped guides and a landing point without editing the phrase", () => {
   const before = structuredClone(document);
   const recorded = render({ ...scene, preview: { note: candidate, collisions: [] } });
-  const target = locate(snapNote(candidate), size),
-    bounds = fieldBounds(size);
+  const target = locate(snapNote(candidate), size);
+  const bounds = fieldBounds(size);
   expect(
     recorded.strokes.filter((stroke) => stroke.dash.length).map(({ points }) => points),
   ).toEqual([

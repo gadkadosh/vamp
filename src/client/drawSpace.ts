@@ -25,6 +25,7 @@ function line(context: CanvasRenderingContext2D, points: Position[], color: stri
   context.lineWidth = width;
   context.stroke();
 }
+
 function circle(
   context: CanvasRenderingContext2D,
   point: Position,
@@ -36,6 +37,7 @@ function circle(
   context.fillStyle = fill;
   context.fill();
 }
+
 function ring(
   context: CanvasRenderingContext2D,
   point: Position,
@@ -49,11 +51,13 @@ function ring(
   context.lineWidth = width;
   context.stroke();
 }
+
 function alpha(color: string, opacity: number) {
   return `${color}${Math.round(opacity * 255)
     .toString(16)
     .padStart(2, "0")}`;
 }
+
 function glow(
   context: CanvasRenderingContext2D,
   point: Position,
@@ -152,8 +156,8 @@ export function drawSpace(
   if (scene.preview) {
     const draft = scene.preview.note;
     const landing = snapNote(draft);
-    const from = locate(draft, size),
-      target = locate(landing, size);
+    const from = locate(draft, size);
+    const target = locate(landing, size);
     const color = scene.preview.collisions.length ? "#f4a391" : "#d7ded0";
     context.setLineDash([2, 6]);
     line(
