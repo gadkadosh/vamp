@@ -488,10 +488,10 @@ export function PointSpace(props: Props) {
           scatter lights; right-click to remove. Keyboard: Page Up and Page Down select the previous
           and next light in time order, with lower pitches first at the same beat. Navigation wraps
           around the loop. Enter adds; arrows select a light, then move it one timing step or pitch.
-          Select a light to duplicate or remove it using the buttons beside it. Keyboard focus uses
-          a small frame. Delete removes; Escape deselects; Space plays or pauses. Tab leaves the
-          surface and its selected controls. Undo restores the previous gesture, or cancels the
-          current gesture before it is released. Escape also cancels an unfinished gesture.
+          Select a light to remove it using the button beside it. Keyboard focus uses a small frame.
+          Delete removes; Escape deselects; Space plays or pauses. Tab leaves the surface and its
+          selected controls. Undo restores the previous gesture, or cancels the current gesture
+          before it is released. Escape also cancels an unfinished gesture.
         </p>
       </div>
       {selected && !dragging && (

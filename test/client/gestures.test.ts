@@ -512,7 +512,9 @@ test("the surface has a single note tab stop and Escape restores the empty selec
       (light) => light.tabIndex === 0,
     ),
   ).toEqual([document.activeElement]);
-  expect(button("Duplicate selected note").tabIndex).toBe(0);
+  expect([
+    ...document.querySelectorAll('[role="group"][aria-label="Selected note"] button'),
+  ]).toEqual([button("Remove selected note")]);
   expect(button("Remove selected note").tabIndex).toBe(0);
   key("Escape");
   expect(document.activeElement).toBe(surface());
@@ -527,6 +529,20 @@ test("the surface has a single note tab stop and Escape restores the empty selec
       (light) => light.tabIndex === -1,
     ),
   ).toBe(true);
+});
+
+test("the selected note's remove button deletes only that note and undo restores it", () => {
+  const before = notes();
+  enterSurface();
+  key("PageUp");
+  expectSelected(16);
+  click(button("Remove selected note"));
+  expect(document.querySelector('[data-light="16"]')).toBeNull();
+  expect(notes()).toEqual(before.filter((_, index) => index !== 15));
+  expect(document.activeElement).toBe(surface());
+  expect(document.querySelector('[role="group"][aria-label="Selected note"]')).toBeNull();
+  click(button("Undo"));
+  expect(notes()).toEqual(before);
 });
 
 test("note navigation preserves the existing redo branch", () => {
@@ -740,17 +756,18 @@ test.each([
   expect(TestAudioContext.instances).toHaveLength(0);
 });
 
-test("Space on a note's copy control does not toggle playback", async () => {
+test("Space on a note's remove control does not toggle playback", async () => {
   act(() => element('[data-light="1"]').focus());
-  act(() => button("Duplicate selected note").focus());
-  const before = notes().length;
+  act(() => button("Remove selected note").focus());
+  const before = notes();
   await act(async () => {
     expect(key(" ").defaultPrevented).toBe(false);
   });
   expect(TestAudioContext.instances).toHaveLength(0);
   // happy-dom does not synthesize a native button click from keyboard events.
-  click(button("Duplicate selected note"));
-  expect(notes()).toHaveLength(before + 1);
+  click(button("Remove selected note"));
+  expect(document.querySelector('[data-light="1"]')).toBeNull();
+  expect(notes()).toEqual(before.slice(1));
   expect(button("Play loop").getAttribute("aria-pressed")).toBe("false");
 });
 

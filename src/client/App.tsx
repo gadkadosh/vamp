@@ -7,24 +7,13 @@ import {
   placeNote,
   noteLabel,
   toneFor,
-  wrapStep,
 } from "./pattern";
 import type { CollisionFeedback, Pattern, Placement, Note } from "./pattern";
 import { Sequencer } from "./sequencer";
 import { DEFAULT_VOLUME, EMPTY_PLAYBACK, INSTRUMENTS } from "./score";
 
 type History = { present: Pattern; past: Pattern[]; future: Pattern[] };
-type IconName =
-  | "play"
-  | "pause"
-  | "undo"
-  | "redo"
-  | "clear"
-  | "more"
-  | "close"
-  | "sound"
-  | "mute"
-  | "duplicate";
+type IconName = "play" | "pause" | "undo" | "redo" | "clear" | "more" | "close" | "sound" | "mute";
 
 function Icon({ name }: { name: IconName }) {
   return (
@@ -51,11 +40,6 @@ function Icon({ name }: { name: IconName }) {
         <path d="M5 12h.01M12 12h.01M19 12h.01" strokeWidth="3" />
       ) : name === "close" ? (
         <path d="m6 6 12 12M18 6 6 18" />
-      ) : name === "duplicate" ? (
-        <>
-          <rect x="8" y="8" width="12" height="12" rx="3" />
-          <path d="M15 8V4H4v11h4" />
-        </>
       ) : (
         <>
           <path d="m10 5-5 4H2v6h3l5 4Z" />
@@ -432,16 +416,6 @@ export function App() {
               </span>
               <button
                 className="icon-button"
-                title="Duplicate, one beat later"
-                aria-label="Duplicate selected note"
-                onClick={() => {
-                  place({ ...note, id: nextNote.current++, step: wrapStep(note.step + 4) });
-                }}
-              >
-                <Icon name="duplicate" />
-              </button>
-              <button
-                className="icon-button"
                 title="Remove · Delete"
                 aria-label="Remove selected note"
                 onClick={() => {
@@ -574,8 +548,8 @@ export function App() {
           <div>
             <dt>Keep or take away</dt>
             <dd>
-              Select a light to copy or remove it. Tap it again to deselect. Undo brings it back.
-              Occupied bass beats and identical sounds flash instead of adding a duplicate.
+              Select a light to remove it. Tap it again to deselect. Undo brings it back. Occupied
+              bass beats and identical sounds flash instead of adding a duplicate.
             </dd>
           </div>
         </dl>
