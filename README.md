@@ -74,7 +74,7 @@ The smoke test uses Wrangler’s test harness, independently of Cloudflare’s V
 - `src/client/PointSpace.tsx`: Direct manipulation, grouped gestures, keyboard interaction, accessible hit targets, and canvas lifecycle.
 - `src/client/drawSpace.ts`: Audio-clock-driven lights, active-placement guides, landing previews, and playheads.
 - `src/client/space.ts`: 2D mapping, inverse picking, and shared light/hit-target settling animation.
-- `src/client/pattern.ts`: Pattern and note models, ascending interface pitch bands, magnetic placement transactions, collision validation, and event compilation. Bands select subsets of instrument ranges; pitch-name mappings are validated when constructing tones and the starting pattern.
+- `src/client/pattern.ts`: Pattern and note models, instrument layout, magnetic placement transactions, collision validation, and event compilation. `INSTRUMENT_LAYOUT` defines the instruments’ order, exposed pitches, and colors on the surface; pitch-name mappings are validated when constructing tones and the starting pattern.
 - `src/client/score.ts`: Keyed instrument registry with names, voices, pitch ranges, polyphony, and seed onsets; shared pitch lookup and note-event/playback types.
 - `src/client/sequencer.ts`, `voices.ts`: Audio-clock scheduler, serialized Play/Pause transitions, and synthesized voices.
 - `test/`: React gesture/history and render-lifecycle tests in Happy DOM, canvas renderer tests, spatial round-trip and musical behavior tests, scheduler tests with a controlled clock, and the Worker smoke test. Evaluate actual sound in a Web Audio-capable browser.

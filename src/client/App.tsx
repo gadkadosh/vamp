@@ -3,7 +3,7 @@ import { PointSpace } from "./PointSpace";
 import {
   compose,
   createPattern,
-  PITCH_BANDS,
+  INSTRUMENT_LAYOUT,
   placeNote,
   noteLabel,
   toneFor,
@@ -509,8 +509,8 @@ export function App() {
         >
           <defs>
             <radialGradient id="guide-glow">
-              <stop stopColor={PITCH_BANDS[2].color} stopOpacity=".3" />
-              <stop offset="1" stopColor={PITCH_BANDS[2].color} stopOpacity="0" />
+              <stop stopColor={INSTRUMENT_LAYOUT[2].color} stopOpacity=".3" />
+              <stop offset="1" stopColor={INSTRUMENT_LAYOUT[2].color} stopOpacity="0" />
             </radialGradient>
           </defs>
           <path
@@ -526,13 +526,13 @@ export function App() {
             Higher
           </text>
           <circle cx="160" cy="53" r="40" fill="url(#guide-glow)" />
-          {PITCH_BANDS.map((band, index) => (
+          {INSTRUMENT_LAYOUT.map((entry, index) => (
             <circle
-              key={band.instrument}
+              key={entry.instrument}
               cx={[86, 126, 160, 226][index]}
               cy={[77, 64, 53, 35][index]}
               r={index === 2 ? 5 : 4}
-              fill={band.color}
+              fill={entry.color}
             />
           ))}
         </svg>

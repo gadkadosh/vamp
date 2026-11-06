@@ -22,7 +22,7 @@ function add(document: Pattern, note: Note) {
   return result.document;
 }
 
-test("draft tone positions are continuous while sounding pitches ascend through four bands", () => {
+test("draft tone positions are continuous while sounding pitches ascend through four instruments", () => {
   expect(new Set(TONES.map((tone) => tone.instrument))).toEqual(
     new Set(["bass", "mallet", "keys", "glass"]),
   );

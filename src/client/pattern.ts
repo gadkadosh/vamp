@@ -1,8 +1,8 @@
 import { INSTRUMENTS, INSTRUMENT_IDS, pitchRow, STEP_COUNT } from "./score";
 import type { InstrumentId, TimedNote } from "./score";
 
-// Ascending interface bands use only the pitches that keep the whole axis increasing.
-export const PITCH_BANDS = [
+// Instrument order, exposed pitches, and colors on the ascending interface axis.
+export const INSTRUMENT_LAYOUT = [
   {
     instrument: "bass",
     color: "#6dcbb0",
@@ -20,14 +20,14 @@ export const PITCH_BANDS = [
   color: string;
   notes: readonly string[];
 }[];
-export const TONES = PITCH_BANDS.flatMap((band) => {
-  const instrument = INSTRUMENTS[band.instrument];
-  return band.notes.map((name) => {
-    const row = pitchRow(band.instrument, name);
+export const TONES = INSTRUMENT_LAYOUT.flatMap((entry) => {
+  const instrument = INSTRUMENTS[entry.instrument];
+  return entry.notes.map((name) => {
+    const row = pitchRow(entry.instrument, name);
     return {
-      instrument: band.instrument,
+      instrument: entry.instrument,
       polyphonic: instrument.polyphonic,
-      color: band.color,
+      color: entry.color,
       row,
       note: instrument.notes[row],
     };
@@ -62,7 +62,7 @@ export function createPattern(): Pattern {
     const candidates = TONES.map((tone, index) => ({ ...tone, index })).filter(
       (tone) => tone.instrument === instrumentId,
     );
-    if (!candidates.length) throw new Error(`No pitch band for ${instrumentId}`);
+    if (!candidates.length) throw new Error(`No instrument layout for ${instrumentId}`);
     for (const [name, step] of instrument.seed) {
       const frequency = instrument.notes[pitchRow(instrumentId, name)].frequency;
       const closest = candidates.reduce((a, b) =>
