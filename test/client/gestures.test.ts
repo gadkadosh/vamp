@@ -98,16 +98,16 @@ function blur() {
   });
 }
 function key(key: string, modifiers: KeyboardEventInit = {}) {
-  act(() => {
-    (document.activeElement ?? surface()).dispatchEvent(
-      new KeyboardEvent("keydown", {
-        key,
-        bubbles: true,
-        cancelable: true,
-        ...modifiers,
-      }),
-    );
+  const event = new KeyboardEvent("keydown", {
+    key,
+    bubbles: true,
+    cancelable: true,
+    ...modifiers,
   });
+  act(() => {
+    (document.activeElement ?? surface()).dispatchEvent(event);
+  });
+  return event;
 }
 function pointer(
   type: string,
@@ -357,4 +357,182 @@ test("events from another pointer cannot finish or cancel the current gesture", 
   pointer("pointerup", 8, 10);
   click(button("Undo"));
   expect(notes()).toEqual(before);
+});
+
+function enterSurface() {
+  act(() => surface().focus());
+}
+function expectSelected(id: number) {
+  const light = element<HTMLButtonElement>(`[data-light="${id}"]`);
+  expect(document.activeElement).toBe(light);
+  expect(light.getAttribute("aria-pressed")).toBe("true");
+  expect(light.tabIndex).toBe(0);
+  expect(surface().classList.contains("is-keyboard")).toBe(true);
+}
+
+test("Page Down reaches every note in time and pitch order without editing the music", () => {
+  const before = notes();
+  enterSurface();
+  const order = [17, 1, 9, 2, 10, 3, 11, 19, 4, 12, 18, 5, 13, 6, 14, 7, 15, 20, 8, 16];
+  for (const id of order) {
+    expect(key("PageDown").defaultPrevented).toBe(true);
+    expectSelected(id);
+  }
+  key("PageDown");
+  expectSelected(order[0]);
+  expect(notes()).toEqual(before);
+  expect(button("Undo").disabled).toBe(true);
+});
+
+test("Page Up starts at the last note and cycles backwards across the loop boundary", () => {
+  enterSurface();
+  expect(key("PageUp").defaultPrevented).toBe(true);
+  expectSelected(16);
+  key("PageUp");
+  expectSelected(8);
+  key("PageDown");
+  expectSelected(16);
+  key("PageDown");
+  expectSelected(17);
+  key("PageUp");
+  expectSelected(16);
+});
+
+test("a non-first note can be selected, moved, and deleted entirely from the keyboard", () => {
+  const before = notes();
+  enterSurface();
+  key("PageUp");
+  expectSelected(16);
+  key("ArrowLeft");
+  expectSelected(16);
+  const moved = notes();
+  expect(moved[15]).toContain("E5, beat position 30 of 32");
+  expect(moved.filter((_, index) => index !== 15)).toEqual(
+    before.filter((_, index) => index !== 15),
+  );
+  key("Delete");
+  expect(document.querySelector('[data-light="16"]')).toBeNull();
+  expect(notes()).toEqual(moved.filter((_, index) => index !== 15));
+  expect(document.activeElement).toBe(surface());
+  key("z", { ctrlKey: true });
+  expect(notes()).toEqual(moved);
+  key("z", { ctrlKey: true });
+  expect(notes()).toEqual(before);
+});
+
+test("arrows still select a light first and then move it, with focus on that light", () => {
+  const before = notes();
+  enterSurface();
+  key("ArrowRight");
+  expectSelected(1);
+  expect(notes()).toEqual(before);
+  key("ArrowRight");
+  expectSelected(1);
+  expect(notes()[0]).toContain("beat position 2 of 32");
+});
+
+test("Enter focuses the new light; undo and redo keep focus inside the surface", () => {
+  const before = notes();
+  enterSurface();
+  key("Enter");
+  expectSelected(21);
+  expect(notes()).toHaveLength(before.length + 1);
+  key("z", { metaKey: true });
+  expect(notes()).toEqual(before);
+  expect(document.activeElement).toBe(surface());
+  key("z", { metaKey: true, shiftKey: true });
+  expectSelected(21);
+});
+
+test("the surface has a single note tab stop and Escape restores the empty selection entry point", () => {
+  enterSurface();
+  key("PageDown");
+  expectSelected(17);
+  expect(surface().tabIndex).toBe(-1);
+  expect(
+    [...document.querySelectorAll<HTMLButtonElement>("[data-light]")].filter(
+      (light) => light.tabIndex === 0,
+    ),
+  ).toEqual([document.activeElement]);
+  expect(button("Duplicate selected note").tabIndex).toBe(0);
+  expect(button("Remove selected note").tabIndex).toBe(0);
+  key("Escape");
+  expect(document.activeElement).toBe(surface());
+  expect(surface().tabIndex).toBe(0);
+  expect(
+    [...document.querySelectorAll("[data-light]")].every(
+      (light) => light.getAttribute("aria-pressed") === "false",
+    ),
+  ).toBe(true);
+  expect(
+    [...document.querySelectorAll<HTMLButtonElement>("[data-light]")].every(
+      (light) => light.tabIndex === -1,
+    ),
+  ).toBe(true);
+});
+
+test("note navigation preserves the existing redo branch", () => {
+  add(2, 9);
+  const completed = notes();
+  click(button("Undo"));
+  const before = notes();
+  enterSurface();
+  key("PageDown");
+  key("PageDown");
+  expectSelected(1);
+  expect(notes()).toEqual(before);
+  expect(button("Undo").disabled).toBe(true);
+  expect(button("Redo").disabled).toBe(false);
+  click(button("Redo"));
+  expect(notes()).toEqual(completed);
+});
+
+test.each(["PageUp", "PageDown"])("%s safely leaves an empty surface focused", (navigation) => {
+  click(button("Sketch options"));
+  click(element(".sketch-menu button:first-of-type"));
+  enterSurface();
+  const event = key(navigation);
+  expect(event.defaultPrevented).toBe(true);
+  expect(notes()).toEqual([]);
+  expect(document.activeElement).toBe(surface());
+  expect(surface().tabIndex).toBe(0);
+});
+
+test("note navigation cancels an unfinished trail without committing it on release", () => {
+  const before = notes();
+  paint();
+  key("PageDown");
+  expect(notes()).toEqual(before);
+  expectSelected(17);
+  expectFinished();
+  pointer("pointerup", 8, 10);
+  expect(notes()).toEqual(before);
+  expect(button("Undo").disabled).toBe(true);
+});
+
+test("switching to pointer selection does not retain the keyboard focus treatment", () => {
+  enterSurface();
+  key("PageUp");
+  expectSelected(16);
+  const light = element('[data-light="1"]');
+  pointer("pointerdown", 0, 6, light);
+  pointer("pointerup", 0, 6);
+  expect(document.activeElement).toBe(light);
+  expect(light.getAttribute("aria-pressed")).toBe("true");
+  expect(surface().classList.contains("is-keyboard")).toBe(false);
+  pointer("pointerdown", 0, 6, light);
+  pointer("pointerup", 0, 6);
+  expect(document.activeElement).toBe(surface());
+  expect(light.getAttribute("aria-pressed")).toBe("false");
+});
+
+test("keyboard input outside the surface never steals focus or changes the selected note", () => {
+  const light = element('[data-light="1"]');
+  pointer("pointerdown", 0, 6, light);
+  pointer("pointerup", 0, 6);
+  const mute = button("Mute audio");
+  act(() => mute.focus());
+  expect(key("PageDown").defaultPrevented).toBe(false);
+  expect(document.activeElement).toBe(mute);
+  expect(light.getAttribute("aria-pressed")).toBe("true");
 });

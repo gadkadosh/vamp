@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactNode } from "react";
 import { drawSpace } from "./drawSpace";
 import { clamp, findCollisions, moveSource, sourceLabel } from "./playground";
@@ -48,6 +48,7 @@ export function PointSpace(props: Props) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const tools = useRef<HTMLDivElement>(null);
   const elements = useRef(new Map<number, HTMLButtonElement>());
+  const focusedLight = useRef<HTMLButtonElement | null>(null);
   const [size, setSize] = useState<Size>({ width: 1, height: 1 });
   const gesture = useRef<Gesture | null>(null);
   const motion = useRef<SettlingMotion | null>(null);
@@ -92,6 +93,18 @@ export function PointSpace(props: Props) {
       window.removeEventListener("pointerdown", pointerDown, true);
     };
   }, []);
+
+  useLayoutEffect(() => {
+    if (!keyboard || dragging) return;
+    const focused = document.activeElement;
+    // Undo can remove the focused button before we can redirect focus.
+    const removedFocusedLight =
+      focused === document.body && focusedLight.current && !focusedLight.current.isConnected;
+    if (surface.current?.contains(focused) || removedFocusedLight) {
+      const target = props.selected === null ? null : elements.current.get(props.selected);
+      (target ?? surface.current)?.focus({ preventScroll: true });
+    }
+  }, [props.document, props.selected, keyboard, dragging]);
 
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) =>
@@ -291,11 +304,31 @@ export function PointSpace(props: Props) {
       ArrowUp: [0, 1],
       ArrowDown: [0, -1],
     };
+    const direction = event.key === "PageDown" ? 1 : event.key === "PageUp" ? -1 : 0;
     const document = gesture.current?.before ?? props.document;
-    if (moves[event.key] || ["Enter", "Escape", "Delete", "Backspace"].includes(event.key))
+    if (
+      direction ||
+      moves[event.key] ||
+      ["Enter", "Escape", "Delete", "Backspace"].includes(event.key)
+    )
       gesture.current?.edit.cancel();
     const source = document.sources.find((item) => item.id === props.selected);
-    if (event.key === " ") {
+    if (direction) {
+      event.preventDefault();
+      const ordered = [...document.sources].sort(
+        (a, b) => a.step - b.step || a.tone - b.tone || a.id - b.id,
+      );
+      const index = ordered.findIndex(({ id }) => id === props.selected);
+      const next =
+        index < 0
+          ? direction > 0
+            ? 0
+            : ordered.length - 1
+          : (index + direction + ordered.length) % ordered.length;
+      const id = ordered[next]?.id ?? null;
+      props.onSelect(id);
+      if (id !== null) elements.current.get(id)?.focus({ preventScroll: true });
+    } else if (event.key === " ") {
       event.preventDefault();
       props.onPlayback();
     } else if (event.key === "Escape") {
@@ -324,10 +357,14 @@ export function PointSpace(props: Props) {
       <div
         ref={surface}
         className={`point-space${dragging ? " is-dragging" : ""}${keyboard ? " is-keyboard" : ""}`}
-        tabIndex={0}
+        tabIndex={selected ? -1 : 0}
         role="group"
         aria-label="Musical surface"
         aria-describedby="space-instructions"
+        aria-keyshortcuts="PageUp PageDown"
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) focusedLight.current = null;
+        }}
         onPointerDown={pointerDown}
         onPointerMove={pointerMove}
         onPointerUp={finish}
@@ -351,7 +388,10 @@ export function PointSpace(props: Props) {
             aria-label={sourceLabel(source)}
             aria-pressed={scene.selected === source.id}
             tabIndex={props.selected === source.id ? 0 : -1}
-            onFocus={() => props.onSelect(source.id)}
+            onFocus={(event) => {
+              focusedLight.current = event.currentTarget;
+              props.onSelect(source.id);
+            }}
             onClick={(event) => {
               // Pointer selection is resolved on release; retain assistive click activation.
               if (event.detail === 0 && props.document.sources.some(({ id }) => id === source.id))
@@ -364,12 +404,13 @@ export function PointSpace(props: Props) {
           selected light again to deselect it. Drag a light to move it. Alignment guides and a
           landing point appear only while placing or dragging; release to settle on the previewed
           beat and pitch. Occupied bass beats and identical sounds are rejected. Shift-drag to
-          scatter lights; right-click to remove. Keyboard: Enter adds; arrows select a light, then
-          move it one timing step or pitch. Select a light to duplicate or remove it using the
-          buttons beside it. Keyboard focus uses a small frame. Delete removes; Escape deselects;
-          Space plays or pauses. Tab leaves the surface and its selected controls. Undo restores the
-          previous gesture, or cancels the current gesture before it is released. Escape also
-          cancels an unfinished gesture.
+          scatter lights; right-click to remove. Keyboard: Page Up and Page Down select the previous
+          and next light in time order, with lower pitches first at the same beat. Navigation wraps
+          around the loop. Enter adds; arrows select a light, then move it one timing step or pitch.
+          Select a light to duplicate or remove it using the buttons beside it. Keyboard focus uses
+          a small frame. Delete removes; Escape deselects; Space plays or pauses. Tab leaves the
+          surface and its selected controls. Undo restores the previous gesture, or cancels the
+          current gesture before it is released. Escape also cancels an unfinished gesture.
         </p>
       </div>
       {selected && !dragging && (

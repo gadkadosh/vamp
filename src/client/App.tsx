@@ -533,7 +533,9 @@ export function App() {
         <p className="guide-footnote">
           Just this tab. Nothing is saved.
           <br />
-          Tab into the space for keyboard controls.
+          Tab into the space. Page Up / Down select a light; arrows move it.
+          <br />
+          On Mac laptops, use Fn + ↑ / ↓ to select.
         </p>
         <button className="guide-done" onClick={() => setHelp(false)}>
           Let’s play
