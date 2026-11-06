@@ -39,7 +39,7 @@ type Gesture = {
 };
 
 export function PointSpace(props: Props) {
-  const focusedLight = useRef<HTMLButtonElement | null>(null);
+  const focusedControl = useRef<HTMLElement | null>(null);
   const [size, setSize] = useState<Size>({ width: 1, height: 1 });
   const gesture = useRef<Gesture | null>(null);
   const [draft, setDraft] = useState<Note | null>(null);
@@ -73,10 +73,10 @@ export function PointSpace(props: Props) {
   useLayoutEffect(() => {
     if (!keyboard || dragging) return;
     const focused = document.activeElement;
-    // Undo can remove the focused button before we can redirect focus.
-    const removedFocusedLight =
-      focused === document.body && focusedLight.current && !focusedLight.current.isConnected;
-    if (surface.current?.contains(focused) || removedFocusedLight) {
+    // Undo or deselection can remove a focused control before we can redirect focus.
+    const removedFocusedControl =
+      focused === document.body && focusedControl.current && !focusedControl.current.isConnected;
+    if (surface.current?.contains(focused) || removedFocusedControl) {
       const target = props.selected === null ? null : elements.current.get(props.selected);
       (target ?? surface.current)?.focus({ preventScroll: true });
     }
@@ -263,11 +263,7 @@ export function PointSpace(props: Props) {
     };
     const direction = event.key === "PageDown" ? 1 : event.key === "PageUp" ? -1 : 0;
     const document = gesture.current?.before ?? props.document;
-    if (
-      direction ||
-      moves[event.key] ||
-      ["Enter", "Escape", "Delete", "Backspace"].includes(event.key)
-    )
+    if (direction || moves[event.key] || ["Enter", "Delete", "Backspace"].includes(event.key))
       gesture.current?.edit.cancel();
     const note = document.notes.find((item) => item.id === props.selected);
     if (direction) {
@@ -285,9 +281,6 @@ export function PointSpace(props: Props) {
       const id = ordered[next]?.id ?? null;
       props.onSelect(id);
       if (id !== null) elements.current.get(id)?.focus({ preventScroll: true });
-    } else if (event.key === "Escape") {
-      props.onSelect(null);
-      surface.current?.focus();
     } else if (event.key === "Enter") {
       event.preventDefault();
       add(size.width * 0.5, size.height * 0.5);
@@ -317,7 +310,7 @@ export function PointSpace(props: Props) {
         aria-describedby="space-instructions"
         aria-keyshortcuts="PageUp PageDown"
         onBlur={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget)) focusedLight.current = null;
+          if (!event.currentTarget.contains(event.relatedTarget)) focusedControl.current = null;
         }}
         onPointerDown={pointerDown}
         onPointerMove={pointerMove}
@@ -343,7 +336,7 @@ export function PointSpace(props: Props) {
             aria-pressed={(draft?.id ?? props.selected) === note.id}
             tabIndex={props.selected === note.id ? 0 : -1}
             onFocus={(event) => {
-              focusedLight.current = event.currentTarget;
+              focusedControl.current = event.currentTarget;
               props.onSelect(note.id);
             }}
             onClick={(event) => {
@@ -362,9 +355,10 @@ export function PointSpace(props: Props) {
           and next light in time order, with lower pitches first at the same beat. Navigation wraps
           around the loop. Enter adds; arrows select a light, then move it one timing step or pitch.
           Select a light to remove it using the button beside it. Keyboard focus uses a small frame.
-          Delete removes; Escape deselects; Space plays or pauses. Tab leaves the surface and its
-          selected controls. Undo restores the previous gesture, or cancels the current gesture
-          before it is released. Escape also cancels an unfinished gesture.
+          Delete removes; Escape deselects from anywhere; Space plays or pauses. Tab leaves the
+          surface and its selected controls. Undo restores the previous gesture, or cancels the
+          current gesture before it is released. Escape closes an open menu or help dialog first, or
+          cancels an unfinished gesture before deselecting.
         </p>
       </div>
       {selected && !dragging && (
@@ -373,11 +367,11 @@ export function PointSpace(props: Props) {
           className="note-tools"
           role="group"
           aria-label="Selected note"
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              props.onSelect(null);
-              surface.current?.focus();
-            }
+          onFocus={(event) => {
+            focusedControl.current = event.target;
+          }}
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) focusedControl.current = null;
           }}
         >
           {props.renderSelection(selected, () => surface.current?.focus())}
