@@ -531,12 +531,14 @@ test("the surface has a single note tab stop and Escape restores the empty selec
   ).toBe(true);
 });
 
-test("the selected note shows only its pitch and a working remove button; undo restores it", () => {
+test("the selected note shows its colored pitch, instrument, and a working remove button; undo restores it", () => {
   const before = notes();
   enterSurface();
   key("PageUp");
   expectSelected(16);
-  expect(element(".note-tools").textContent).toBe("E5");
+  expect(element(".selected-pitch").textContent).toBe("E5");
+  expect(element(".selected-pitch").style.color).toBe("#e99db3");
+  expect(element(".selected-material").textContent).toBe("Soft piano");
   click(button("Remove selected note"));
   expect(document.querySelector('[data-light="16"]')).toBeNull();
   expect(notes()).toEqual(before.filter((_, index) => index !== 15));
@@ -544,6 +546,19 @@ test("the selected note shows only its pitch and a working remove button; undo r
   expect(document.querySelector('[role="group"][aria-label="Selected note"]')).toBeNull();
   click(button("Undo"));
   expect(notes()).toEqual(before);
+});
+
+test("selected note details follow pitch and instrument changes", () => {
+  enterSurface();
+  key("PageUp");
+  key("ArrowUp");
+  expect(element(".selected-pitch").textContent).toBe("G5");
+  expect(element(".selected-pitch").style.color).toBe("#a5b4f6");
+  expect(element(".selected-material").textContent).toBe("Glass chimes");
+  click(button("Undo"));
+  expect(element(".selected-pitch").textContent).toBe("E5");
+  expect(element(".selected-pitch").style.color).toBe("#e99db3");
+  expect(element(".selected-material").textContent).toBe("Soft piano");
 });
 
 test("note navigation preserves the existing redo branch", () => {

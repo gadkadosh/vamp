@@ -210,7 +210,13 @@ button svg {
 }
 
 .selected-pitch {
+  font-weight: 600;
+}
+
+.selected-material {
   color: var(--muted);
+  font-size: 11px;
+  margin-right: 5px;
 }
 
 .note-tools .icon-button {
@@ -579,6 +585,11 @@ button svg {
 
   .selected-pitch {
     font-size: 11px;
+  }
+
+  .selected-material {
+    font-size: 10px;
+    margin-right: 3px;
   }
 
   .note-tools .icon-button {

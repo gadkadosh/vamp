@@ -18,7 +18,7 @@ Open the URL printed by Vite, then press the central **Play** button to enable a
 
 The Living light design gives the instrument a full-screen, deep-blue field with circular, material-colored lights. Left to right is time in a two-measure loop; bottom to top is low to high pitch. There are no cameras, depth controls, input modes, or permanent pitch grids. Open **How to play** for the guide; **Sketch options** (the three dots) contains the note count, clear, and reset actions.
 
-Press **Play** to hear the starting phrase. Tap empty space to add a light; drag a light to change timing and pitch. A snapped landing ring and temporary alignment guides appear only while pressing to place or dragging a light, for both mouse and touch. There is no hover preview or temporary note-name label. The preview does not add or sound a note and disappears on release or cancellation. Selection strengthens the light's color and glow, without a surrounding ring. Select a light to reveal a remove button beside it; undo restores the previous gesture.
+Press **Play** to hear the starting phrase. Tap empty space to add a light; drag a light to change timing and pitch. A snapped landing ring and temporary alignment guides appear only while pressing to place or dragging a light, for both mouse and touch. There is no hover preview or temporary note-name label. The preview does not add or sound a note and disappears on release or cancellation. Selection strengthens the light's color and glow, without a surrounding ring. Select a light to reveal its pitch in the light’s color, its instrument name, and a remove button beside it; undo restores the previous gesture.
 
 ### Magnetic timing and pitch
 
