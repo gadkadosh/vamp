@@ -50,7 +50,9 @@ Four synthesized acoustic sketches are available: mallet, felt keys, plucked bas
 
 All sounds share a two-measure 4/4 loop at 88 BPM in C major, with 32 sixteenth-note timing positions. Each material has its own natural decay, with no editable note lengths or visual tails. Bass damps at the next bass onset; other notes overlap independently. Notes can ring across the loop seam rather than being cut short. Lights bloom in their material color when they sound, with a faint sweep instead of a permanent timing ruler. Reduced motion uses illumination without expanding waves or a moving sweep. Each new loop re-articulates the phrase. Pause freezes the Web Audio clock and holds the lights; mute does not stop it. The visualization reads that same clock rather than running a separate animation timer.
 
-The composition compiles to a list of note events, each with an instrument, pitch row, and timing step. Audio is scheduled slightly ahead for steady timing. Changes affect the next unscheduled audio window rather than restarting the loop. A sleeping or heavily throttled tab may skip strikes rather than catch up in a burst.
+The composition compiles to a list of note events, each with a stable light ID, instrument, pitch row, and timing step. Audio is scheduled slightly ahead for steady timing. Blooms use recorded strike times from that scheduler, and only appear once the audio clock reaches the onset. New, moved, or repitched lights do not inherit a bloom from a sound they have not played. Changes affect the next unscheduled audio window rather than restarting the loop. A sleeping or heavily throttled tab may skip strikes rather than catch up in a burst; skipped strikes do not produce blooms.
+
+An unchanged paused instrument does not run a canvas animation loop. Edits and resizing redraw the scene, settling animates only until the light lands, and collision feedback expires with a single redraw. During playback, static hit targets stay in place and toolbar dimensions are observed on resize rather than measured every frame.
 
 ## Commands
 
@@ -73,9 +75,9 @@ The smoke test uses Wrangler’s test harness, independently of Cloudflare’s V
 - `src/client/drawSpace.ts`: Audio-clock-driven lights, active-placement guides, landing previews, and playheads.
 - `src/client/space.ts`: 2D mapping, inverse picking, and shared light/hit-target settling animation.
 - `src/client/playground.ts`: Light model, tone/material registry, magnetic placement transactions, collision validation, and event compilation.
-- `src/client/score.ts`: Voice definitions, ranges, polyphony, seed onsets, and the note-event type.
+- `src/client/score.ts`: Voice definitions, ranges, polyphony, seed onsets, and note-event/playback types.
 - `src/client/sequencer.ts`, `voices.ts`: Audio-clock scheduler and synthesized voices.
-- `test/`: React gesture/history interaction tests in Happy DOM, spatial round-trip and musical behavior tests, scheduler tests with a controlled clock, and the Worker smoke test. Evaluate actual sound in a Web Audio-capable browser.
+- `test/`: React gesture/history and render-lifecycle tests in Happy DOM, canvas renderer tests, spatial round-trip and musical behavior tests, scheduler tests with a controlled clock, and the Worker smoke test. Evaluate actual sound in a Web Audio-capable browser.
 - `src/server/`: Worker entry point, `/api/health`, and the empty `Room` class.
 - `vite.config.ts`, `wrangler.jsonc`: Local development and Worker configuration.
 

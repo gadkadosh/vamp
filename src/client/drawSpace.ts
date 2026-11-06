@@ -1,20 +1,15 @@
-import { STEP_COUNT, STEP_SECONDS } from "./score";
+import { STEP_COUNT } from "./score";
+import type { Playback } from "./score";
 import { snapSource, soundingStep, toneFor } from "./playground";
-import type {
-  Collision,
-  CollisionFeedback,
-  Constellation,
-  Source,
-  SpatialNote,
-} from "./playground";
+import type { Collision, CollisionFeedback, Constellation, Source } from "./playground";
 import { fieldBounds, locate, TAU } from "./space";
 import type { LightProjection, Position, Size } from "./space";
 
+export const FEEDBACK_MS = 800;
 export type LandingPreview = { source: Source; collisions: Collision[] };
 export type Scene = {
   document: Constellation;
   selected: number | null;
-  score: SpatialNote[];
   playing: boolean;
   reducedMotion: boolean;
   preview: LandingPreview | null;
@@ -77,21 +72,26 @@ export function drawSpace(
   context: CanvasRenderingContext2D,
   scene: Scene,
   size: Size,
-  progress: number | null,
+  playback: Playback,
   points: LightProjection[],
   now: number,
 ) {
   const bounds = fieldBounds(size);
-  const sounding = new Set(scene.score.map((note) => `${note.sourceId}:${note.step}`));
+  const progress = playback.position;
   const ageFor = (source: Source) => {
+    const onset = playback.onsets.get(source.id);
+    const tone = toneFor(source);
     if (
-      progress === null ||
+      !onset ||
+      onset.time > playback.time ||
       scene.preview?.source.id === source.id ||
-      !sounding.has(`${source.id}:${soundingStep(source.step)}`)
+      onset.note.step !== soundingStep(source.step) ||
+      onset.note.instrument !== tone.instrument ||
+      onset.note.row !== tone.row
     )
       return Infinity;
-    // The suspended audio clock holds the bloom as well as the music when paused.
-    return ((progress - soundingStep(source.step) + STEP_COUNT) % STEP_COUNT) * STEP_SECONDS;
+    // Both bloom age and pause behavior come from the same clock as the actual strike.
+    return playback.time - onset.time;
   };
 
   if (scene.playing && !scene.reducedMotion && progress !== null) {
@@ -144,7 +144,7 @@ export function drawSpace(
     const conflict =
       scene.preview?.collisions.some(matches) ||
       (scene.feedback &&
-        now - scene.feedback.started < 800 &&
+        now - scene.feedback.started < FEEDBACK_MS &&
         scene.feedback.collisions.some(matches));
     if (conflict) ring(context, position, radius + 9, "#f4a391d9");
   }

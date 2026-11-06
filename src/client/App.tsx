@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PointSpace } from "./PointSpace";
 import {
   compose,
@@ -11,6 +11,7 @@ import {
 } from "./playground";
 import type { CollisionFeedback, Constellation, Placement, Source } from "./playground";
 import { Sequencer } from "./sequencer";
+import { EMPTY_PLAYBACK } from "./score";
 
 type History = { present: Constellation; past: Constellation[]; future: Constellation[] };
 type IconName =
@@ -83,6 +84,7 @@ export function App() {
   const score = useMemo(() => compose(constellation), [constellation]);
   const scoreRef = useRef(score);
   const engine = useRef<Sequencer | null>(null);
+  const getPlayback = useCallback(() => engine.current?.getPlayback() ?? EMPTY_PLAYBACK, []);
   const [selectedId, setSelected] = useState<number | null>(null);
   const selected = constellation.sources.find((source) => source.id === selectedId);
   const nextSource = useRef(Math.max(...constellation.sources.map((source) => source.id), 0) + 1);
@@ -357,7 +359,6 @@ export function App() {
       <section className="surface" aria-label="Your musical sketch">
         <PointSpace
           document={constellation}
-          score={score}
           selected={selected?.id ?? null}
           playing={playing}
           feedback={feedback}
@@ -366,7 +367,7 @@ export function App() {
           onEdit={edit}
           onBegin={beginGesture}
           nextId={() => nextSource.current++}
-          getProgress={() => engine.current?.getPosition() ?? null}
+          getPlayback={getPlayback}
           onPlayback={() => void togglePlayback()}
           renderSelection={(source, focusSurface) => (
             <>

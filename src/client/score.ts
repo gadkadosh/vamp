@@ -84,7 +84,15 @@ export const INSTRUMENTS = [
 ] as const;
 export type InstrumentId = (typeof INSTRUMENTS)[number]["id"];
 export type TimedNote = {
+  sourceId: number;
   instrument: InstrumentId;
   row: number;
   step: number;
 };
+export type NoteOnset = { readonly note: Readonly<TimedNote>; readonly time: number };
+export type Playback = {
+  time: number;
+  position: number | null;
+  onsets: ReadonlyMap<number, NoteOnset>;
+};
+export const EMPTY_PLAYBACK: Playback = { time: 0, position: null, onsets: new Map() };

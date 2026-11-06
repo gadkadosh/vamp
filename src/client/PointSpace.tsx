@@ -1,20 +1,15 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactNode } from "react";
-import { drawSpace } from "./drawSpace";
+import { drawSpace, FEEDBACK_MS } from "./drawSpace";
+import type { Scene } from "./drawSpace";
+import type { Playback } from "./score";
 import { clamp, findCollisions, moveSource, sourceLabel } from "./playground";
-import type {
-  CollisionFeedback,
-  Constellation,
-  Placement,
-  Source,
-  SpatialNote,
-} from "./playground";
+import type { CollisionFeedback, Constellation, Placement, Source } from "./playground";
 import { layoutSources, pick, SETTLE_MS } from "./space";
 import type { SettlingMotion, Size } from "./space";
 
 type Props = {
   document: Constellation;
-  score: SpatialNote[];
   selected: number | null;
   playing: boolean;
   feedback: CollisionFeedback | null;
@@ -23,7 +18,7 @@ type Props = {
   onEdit: (change: (document: Constellation) => Constellation) => Constellation;
   onBegin: (cancel: () => void) => GestureEdit;
   nextId: () => number;
-  getProgress: () => number | null;
+  getPlayback: () => Playback;
   onPlayback: () => void;
   renderSelection: (source: Source, focusSurface: () => void) => ReactNode;
 };
@@ -46,6 +41,7 @@ type Gesture = {
 export function PointSpace(props: Props) {
   const surface = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
+  const canvasBounds = useRef({ top: 0, height: 0 });
   const tools = useRef<HTMLDivElement>(null);
   const elements = useRef(new Map<number, HTMLButtonElement>());
   const focusedLight = useRef<HTMLButtonElement | null>(null);
@@ -64,10 +60,11 @@ export function PointSpace(props: Props) {
       ? props.document.sources.map((source) => (source.id === draft.id ? draft : source))
       : [...props.document.sources, draft]
     : props.document.sources;
-  const scene = {
-    ...props,
+  const scene: Scene = {
     document: { ...props.document, sources },
     selected: draft?.id ?? props.selected,
+    playing: props.playing,
+    feedback: props.feedback,
     reducedMotion,
     preview: draft
       ? {
@@ -76,8 +73,6 @@ export function PointSpace(props: Props) {
         }
       : null,
   };
-  const latest = useRef(scene);
-  latest.current = scene;
   const lights = layoutSources(sources, size, motion.current, performance.now());
 
   useEffect(() => {
@@ -120,7 +115,7 @@ export function PointSpace(props: Props) {
     };
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = canvas.current!;
     const context = element.getContext("2d")!;
     const ratio = Math.min(devicePixelRatio || 1, 2);
@@ -132,39 +127,101 @@ export function PointSpace(props: Props) {
     element.width = Math.round(size.width * ratio);
     element.height = Math.round(host.height * ratio);
     context.setTransform(ratio, 0, 0, ratio, 0, canvasTop * ratio);
-    let frame: number;
+    canvasBounds.current = { top: canvasTop, height: host.height };
+  }, [size]);
+
+  // Redraw committed scene changes; only playback and settling keep a frame loop alive.
+  useLayoutEffect(() => {
+    const context = canvas.current!.getContext("2d")!;
+    const bounds = canvasBounds.current;
+    const toolbar = tools.current;
+    let toolbarSize = toolbar ? { width: toolbar.offsetWidth, height: toolbar.offsetHeight } : null;
+    let toolbarPosition: { x: number; y: number } | null = null;
+    let frame: number | null = null;
+    function requestDraw() {
+      if (frame === null) frame = requestAnimationFrame(draw);
+    }
     function draw() {
-      const scene = latest.current;
+      frame = null;
       const now = performance.now();
-      if (motion.current && (scene.reducedMotion || now - motion.current.started >= SETTLE_MS))
+      const settling = motion.current;
+      if (
+        settling &&
+        (scene.reducedMotion ||
+          now - settling.started >= SETTLE_MS ||
+          !sources.some(({ id }) => id === settling.to.id))
+      )
         motion.current = null;
-      const points = layoutSources(scene.document.sources, size, motion.current, now);
-      context.clearRect(0, -canvasTop, size.width, host.height);
-      drawSpace(context, scene, size, scene.getProgress(), points, now);
-      for (const { source, position } of points) {
-        const target = elements.current.get(source.id);
-        if (target) {
-          target.style.left = `${position.x}px`;
-          target.style.top = `${position.y}px`;
-        }
-        if (source.id === scene.selected && tools.current) {
-          const { offsetWidth: width, offsetHeight: height } = tools.current;
-          tools.current.style.left = `${clamp(position.x - width / 2, 4, Math.max(4, size.width - width - 4))}px`;
-          tools.current.style.top = `${position.y + 27 + height > size.height ? position.y - height - 28 : position.y + 27}px`;
+      const points = layoutSources(sources, size, motion.current, now);
+      context.clearRect(0, -bounds.top, size.width, bounds.height);
+      drawSpace(context, scene, size, props.getPlayback(), points, now);
+      // React positions static lights. Only a settling light needs per-frame DOM updates.
+      if (settling) {
+        const point = points.find(({ source }) => source.id === settling.to.id);
+        const target = elements.current.get(settling.to.id);
+        if (point && target) {
+          target.style.left = `${point.position.x}px`;
+          target.style.top = `${point.position.y}px`;
         }
       }
-      frame = requestAnimationFrame(draw);
+      const selectedPoint = points.find(({ source }) => source.id === scene.selected);
+      if (toolbar && toolbarSize && selectedPoint) {
+        const { width, height } = toolbarSize;
+        const position = selectedPoint.position;
+        const x = clamp(position.x - width / 2, 4, Math.max(4, size.width - width - 4));
+        const y =
+          position.y + 27 + height > size.height ? position.y - height - 28 : position.y + 27;
+        if (toolbarPosition?.x !== x) toolbar.style.left = `${x}px`;
+        if (toolbarPosition?.y !== y) toolbar.style.top = `${y}px`;
+        toolbarPosition = { x, y };
+      }
+      if (scene.playing || motion.current) requestDraw();
     }
+    const remaining = scene.feedback ? scene.feedback.started + FEEDBACK_MS - performance.now() : 0;
+    const feedbackTimer =
+      remaining > 0
+        ? setTimeout(() => {
+            if (frame === null) draw();
+          }, remaining)
+        : undefined;
+    const observer = toolbar
+      ? new ResizeObserver(() => {
+          const width = toolbar.offsetWidth,
+            height = toolbar.offsetHeight;
+          if (toolbarSize?.width !== width || toolbarSize?.height !== height) {
+            toolbarSize = { width, height };
+            requestDraw();
+          }
+        })
+      : null;
     draw();
-    return () => cancelAnimationFrame(frame);
-  }, [size]);
+    if (toolbar) observer?.observe(toolbar);
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+      clearTimeout(feedbackTimer);
+      observer?.disconnect();
+    };
+  }, [
+    sources,
+    size,
+    props.selected,
+    props.playing,
+    props.feedback,
+    props.getPlayback,
+    draft,
+    reducedMotion,
+    dragging,
+  ]);
 
   function updateDraft(source: Source | null) {
     draftRef.current = source;
     setDraft(source);
   }
   function settle(from: Source, to: Source | undefined) {
-    motion.current = to && !reducedMotion ? { from, to, started: performance.now() } : null;
+    motion.current =
+      to && !reducedMotion && (from.step !== to.step || from.tone !== to.tone)
+        ? { from, to, started: performance.now() }
+        : null;
   }
   function coordinates(event: PointerEvent<HTMLDivElement>) {
     const bounds = event.currentTarget.getBoundingClientRect();

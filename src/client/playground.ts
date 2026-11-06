@@ -30,7 +30,6 @@ export const TONES = MATERIALS.flatMap((material) => {
 // Drafts move continuously; committed lights land on rhythmic and pitched positions.
 export type Source = { id: number; step: number; tone: number };
 export type Constellation = { sources: Source[] };
-export type SpatialNote = TimedNote & { sourceId: number };
 export type Collision = { sourceId: number; step: number };
 export type CollisionFeedback = { collisions: Collision[]; started: number };
 export type Placement = {
@@ -95,7 +94,7 @@ export function placeSource(document: Constellation, candidate: Source): Placeme
   return { document: { ...document, sources }, source, collisions: [], accepted: true };
 }
 
-export function compose(document: Constellation): SpatialNote[] {
+export function compose(document: Constellation): TimedNote[] {
   // Placement has already resolved conflicts. Compilation never drops a visible light.
   return document.sources
     .map((source) => ({

@@ -5,34 +5,56 @@ import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import { App } from "../../src/client/App";
 import { locate } from "../../src/client/space";
+import { STEP_SECONDS } from "../../src/client/score";
+import { TestAudioContext } from "../audio-context";
 
 const size = { width: 900, height: 600 };
 let root: Root;
+let frames: Map<number, FrameRequestCallback>;
+let wallTime: number;
+let draws: ReturnType<typeof vi.fn<() => void>>;
+let glows: Map<string, number>;
+let preference: EventTarget & { matches: boolean };
+let observers: Map<Element, (entries: { contentRect: typeof size }[]) => void>;
 
 beforeEach(async () => {
   vi.useFakeTimers();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  vi.stubGlobal("matchMedia", () => ({
-    matches: false,
-    addEventListener() {},
-    removeEventListener() {},
-  }));
+  preference = Object.assign(new EventTarget(), { matches: false });
+  vi.stubGlobal("matchMedia", () => preference);
+  TestAudioContext.instances = [];
+  vi.stubGlobal("AudioContext", TestAudioContext);
+  frames = new Map();
+  wallTime = 0;
+  draws = vi.fn();
+  glows = new Map();
+  observers = new Map();
+  vi.spyOn(performance, "now").mockImplementation(() => wallTime);
   vi.stubGlobal(
     "ResizeObserver",
     class {
       private callback: (entries: { contentRect: typeof size }[]) => void;
+      private target: Element | null = null;
       constructor(callback: (entries: { contentRect: typeof size }[]) => void) {
         this.callback = callback;
       }
-      observe() {
+      observe(target: Element) {
+        this.target = target;
+        observers.set(target, this.callback);
         this.callback([{ contentRect: size }]);
       }
-      disconnect() {}
+      disconnect() {
+        if (this.target) observers.delete(this.target);
+      }
     },
   );
   // Only browser geometry and drawing are fake; App, PointSpace, and history run together.
-  vi.stubGlobal("requestAnimationFrame", () => 1);
-  vi.stubGlobal("cancelAnimationFrame", () => {});
+  let nextFrame = 0;
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    frames.set(++nextFrame, callback);
+    return nextFrame;
+  });
+  vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
     this: HTMLElement,
   ) {
@@ -43,7 +65,10 @@ beforeEach(async () => {
   });
   const context = {
     setTransform() {},
-    clearRect() {},
+    clearRect() {
+      draws();
+      glows.clear();
+    },
     beginPath() {},
     arc() {},
     fill() {},
@@ -52,7 +77,11 @@ beforeEach(async () => {
     lineTo() {},
     setLineDash() {},
     fillRect() {},
-    createRadialGradient: () => ({ addColorStop() {} }),
+    createRadialGradient: (...args: number[]) => {
+      const key = `${args[0]}:${args[1]}`;
+      glows.set(key, Math.max(glows.get(key) ?? 0, args[5]));
+      return { addColorStop() {} };
+    },
     createLinearGradient: () => ({ addColorStop() {} }),
   };
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(
@@ -66,11 +95,27 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await act(async () => root.unmount());
+  expect(frames.size).toBe(0);
+  expect(vi.getTimerCount()).toBe(0);
   document.body.replaceChildren();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
+
+function frame(milliseconds = 16) {
+  act(() => {
+    wallTime += milliseconds;
+    vi.advanceTimersByTime(milliseconds);
+    const callbacks = [...frames.values()];
+    frames.clear();
+    for (const callback of callbacks) callback(wallTime);
+  });
+}
+function glowAt(step: number, tone: number) {
+  const position = locate({ id: 0, step, tone }, size);
+  return glows.get(`${position.x}:${position.y}`);
+}
 
 function element<T extends HTMLElement = HTMLElement>(selector: string): T {
   const found = document.querySelector<T>(selector);
@@ -535,4 +580,188 @@ test("keyboard input outside the surface never steals focus or changes the selec
   expect(key("PageDown").defaultPrevented).toBe(false);
   expect(document.activeElement).toBe(mute);
   expect(light.getAttribute("aria-pressed")).toBe("true");
+});
+
+test("an unchanged paused surface schedules no animation frames or repeated redraws", () => {
+  expect(frames.size).toBe(0);
+  const count = draws.mock.calls.length;
+  frame(1000);
+  expect(draws).toHaveBeenCalledTimes(count);
+  expect(frames.size).toBe(0);
+});
+
+test("the first loop illuminates only notes whose scheduled onset has actually arrived", async () => {
+  await act(async () => button("Play loop").click());
+  const context = TestAudioContext.instances[0];
+  context.currentTime = 0.05;
+  frame();
+  expect(glowAt(0, 6)).toBe(225);
+  expect(glowAt(30, 15)).toBe(155);
+  expect(glowAt(28, 8)).toBe(155);
+});
+
+test("idle edits redraw once and unrelated status changes do not redraw the canvas", () => {
+  const before = draws.mock.calls.length;
+  add(3, 9);
+  expect(draws.mock.calls.length).toBeGreaterThan(before);
+  expect(frames.size).toBe(0);
+  const afterEdit = draws.mock.calls.length;
+  frame(5000);
+  expect(draws).toHaveBeenCalledTimes(afterEdit);
+  expect(frames.size).toBe(0);
+});
+
+test("settling keeps hit targets aligned and stops requesting frames at its final position", () => {
+  add(3.4, 9.2);
+  const light = element('[data-light="21"]');
+  const from = locate({ id: 21, step: 3.4, tone: 9.2 }, size);
+  const to = locate({ id: 21, step: 3, tone: 9 }, size);
+  expect(frames.size).toBe(1);
+  expect(parseFloat(light.style.left)).toBeCloseTo(from.x);
+  frame(90);
+  const x = parseFloat(light.style.left),
+    y = parseFloat(light.style.top);
+  expect(x).toBeLessThan(from.x);
+  expect(x).toBeGreaterThan(to.x);
+  expect(
+    [...glows.keys()].some((key) => {
+      const [px, py] = key.split(":").map(Number);
+      return Math.abs(px - x) < 0.001 && Math.abs(py - y) < 0.001;
+    }),
+  ).toBe(true);
+  frame(100);
+  expect(parseFloat(light.style.left)).toBeCloseTo(to.x);
+  expect(parseFloat(light.style.top)).toBeCloseTo(to.y);
+  expect(frames.size).toBe(0);
+  const count = draws.mock.calls.length;
+  frame(500);
+  expect(draws).toHaveBeenCalledTimes(count);
+});
+
+test("turning on reduced motion snaps a settling light and stops its animation", () => {
+  add(3.4, 9.2);
+  expect(frames.size).toBe(1);
+  act(() => {
+    preference.matches = true;
+    preference.dispatchEvent(new Event("change"));
+  });
+  expect(frames.size).toBe(0);
+  const to = locate({ id: 21, step: 3, tone: 9 }, size);
+  expect(parseFloat(element('[data-light="21"]').style.left)).toBeCloseTo(to.x);
+});
+
+test("collision feedback expires with a single redraw rather than a continuous frame loop", () => {
+  pointer("pointerdown", 0, 1, surface(), { shiftKey: true });
+  pointer("pointerup", 0, 1);
+  expect(frames.size).toBe(0);
+  const before = draws.mock.calls.length;
+  frame(400);
+  expect(draws).toHaveBeenCalledTimes(before);
+  frame(400);
+  expect(draws).toHaveBeenCalledTimes(before + 1);
+  expect(frames.size).toBe(0);
+});
+
+test("pause holds the actual bloom without drawing, and resume restarts the animation", async () => {
+  await act(async () => button("Play loop").click());
+  const context = TestAudioContext.instances[0];
+  context.currentTime = 0.05;
+  frame();
+  expect(glowAt(0, 6)).toBe(225);
+  await act(async () => button("Pause loop").click());
+  expect(frames.size).toBe(0);
+  const paused = draws.mock.calls.length;
+  frame(1000);
+  expect(draws).toHaveBeenCalledTimes(paused);
+  expect(glowAt(0, 6)).toBe(225);
+  await act(async () => button("Play loop").click());
+  expect(frames.size).toBe(1);
+  context.currentTime = 0.2;
+  frame();
+  expect(glowAt(0, 6)).toBeLessThan(225);
+  expect(glowAt(0, 6)).toBeGreaterThan(155);
+});
+
+test("adding a light at the current buffered beat does not invent a strike", async () => {
+  await act(async () => button("Play loop").click());
+  const context = TestAudioContext.instances[0];
+  context.currentTime = 0.05 + 16 * STEP_SECONDS;
+  frame();
+  add(16, 9);
+  expect(glowAt(16, 9)).toBe(155);
+});
+
+test("repitching a ringing light does not transfer its bloom to the new pitch", async () => {
+  await act(async () => button("Play loop").click());
+  const context = TestAudioContext.instances[0];
+  context.currentTime = 0.05;
+  frame();
+  expect(glowAt(0, 6)).toBe(225);
+  enterSurface();
+  key("PageDown");
+  key("PageDown");
+  key("ArrowUp");
+  expectSelected(1);
+  expect(glowAt(0, 7)).toBe(155);
+});
+
+test("playback does not rewrite static hit positions or poll toolbar layout every frame", async () => {
+  const width = vi.spyOn(HTMLElement.prototype, "offsetWidth", "get");
+  const height = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get");
+  enterSurface();
+  key("PageUp");
+  await act(async () => button("Play loop").click());
+  const light = element('[data-light="16"]');
+  const toolbar = element(".note-tools");
+  const mutations: MutationRecord[] = [];
+  const observer = new MutationObserver((records) => mutations.push(...records));
+  observer.observe(light, { attributes: true, attributeFilter: ["style"] });
+  observer.observe(toolbar, { attributes: true, attributeFilter: ["style"] });
+  const widths = width.mock.calls.length,
+    heights = height.mock.calls.length;
+  const context = TestAudioContext.instances[0];
+  for (let i = 1; i <= 5; i++) {
+    context.currentTime = i * 0.025;
+    frame();
+  }
+  mutations.push(...observer.takeRecords());
+  observer.disconnect();
+  expect(mutations).toEqual([]);
+  expect(width).toHaveBeenCalledTimes(widths);
+  expect(height).toHaveBeenCalledTimes(heights);
+  expect(frames.size).toBe(1);
+});
+
+test("toolbar resizing repositions it once without starting an idle frame loop", () => {
+  let width = 180;
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    return this.classList.contains("note-tools") ? width : 0;
+  });
+  enterSurface();
+  key("PageUp");
+  const toolbar = element(".note-tools");
+  const left = parseFloat(toolbar.style.left);
+  act(() => {
+    width = 400;
+    observers.get(toolbar)!([{ contentRect: size }]);
+  });
+  expect(frames.size).toBe(1);
+  frame();
+  expect(parseFloat(toolbar.style.left)).toBeLessThan(left);
+  expect(frames.size).toBe(0);
+});
+
+test("resizing a paused surface redraws the canvas and relocates hit targets without an idle loop", () => {
+  enterSurface();
+  key("PageUp");
+  const resized = { width: 1100, height: size.height };
+  const before = draws.mock.calls.length;
+  act(() => observers.get(surface())!([{ contentRect: resized }]));
+  const target = locate({ id: 16, step: 30, tone: 15 }, resized);
+  expect(parseFloat(element('[data-light="16"]').style.left)).toBeCloseTo(target.x);
+  expect(element<HTMLCanvasElement>("canvas").width).toBe(1100);
+  expect(draws.mock.calls.length).toBeGreaterThan(before);
+  expect(frames.size).toBe(0);
 });

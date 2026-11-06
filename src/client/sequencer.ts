@@ -1,5 +1,5 @@
-import { DEFAULT_VOLUME, INSTRUMENTS, STEP_COUNT, STEP_SECONDS } from "./score";
-import type { InstrumentId, TimedNote } from "./score";
+import { DEFAULT_VOLUME, EMPTY_PLAYBACK, INSTRUMENTS, STEP_COUNT, STEP_SECONDS } from "./score";
+import type { InstrumentId, NoteOnset, Playback, TimedNote } from "./score";
 
 export class Sequencer {
   private context: AudioContext | null = null;
@@ -7,6 +7,7 @@ export class Sequencer {
   private channels = new Map<InstrumentId, GainNode>();
   private monoVoices = new Map<InstrumentId, (time: number) => void>();
   private scheduledUntil = 0;
+  private onsets: NoteOnset[] = [];
   private volume = DEFAULT_VOLUME;
   private startTime: number | null = null;
   private timer: ReturnType<typeof setInterval> | undefined;
@@ -47,11 +48,20 @@ export class Sequencer {
     await this.context?.suspend();
   }
 
-  // Read the audio clock directly so spatial playheads stay in sync through pauses.
-  getPosition(): number | null {
-    if (!this.context || this.startTime === null) return null;
-    const elapsed = this.context.currentTime - this.startTime;
-    return elapsed < 0 ? null : (elapsed / STEP_SECONDS) % STEP_COUNT;
+  // Expose only strikes whose audio-time onset has arrived, not future buffered notes.
+  getPlayback(): Playback {
+    if (!this.context || this.startTime === null) return EMPTY_PLAYBACK;
+    const time = this.context.currentTime;
+    const elapsed = time - this.startTime;
+    const onsets = new Map<number, NoteOnset>();
+    for (const onset of this.onsets) {
+      if (onset.time <= time) onsets.set(onset.note.sourceId, onset);
+    }
+    return {
+      time,
+      position: elapsed < 0 ? null : (elapsed / STEP_SECONDS) % STEP_COUNT,
+      onsets,
+    };
   }
 
   setVolume(volume: number) {
@@ -65,6 +75,7 @@ export class Sequencer {
     this.disposed = true;
     this.clearTimer();
     this.monoVoices.clear();
+    this.onsets = [];
     void this.context?.close().catch(() => {});
   }
 
@@ -82,7 +93,9 @@ export class Sequencer {
     const until = now + 0.1;
     if (from >= until) return;
     const loopSeconds = STEP_COUNT * STEP_SECONDS;
-    const starts: { note: TimedNote; time: number }[] = [];
+    // One loop of actual strikes is sufficient for blooms, without retaining deleted notes forever.
+    this.onsets = this.onsets.filter((onset) => onset.time >= now - loopSeconds);
+    const starts: NoteOnset[] = [];
     for (
       let loop = Math.floor((from - start) / loopSeconds);
       loop <= Math.floor((until - start) / loopSeconds);
@@ -106,6 +119,7 @@ export class Sequencer {
       );
       // Only bass returns a damper; polyphonic voices finish naturally.
       if (stop) this.monoVoices.set(instrument.id, stop);
+      this.onsets.push({ note: { ...note }, time });
     }
     // A rolling, half-open audio-time window prevents duplicate strikes, handles
     // fractional onsets, and skips missed events after a background-tab stall.

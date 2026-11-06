@@ -2,7 +2,8 @@ import { expect, test } from "vite-plus/test";
 import { drawSpace } from "../src/client/drawSpace";
 import type { Scene } from "../src/client/drawSpace";
 import { compose, snapSource, toneFor } from "../src/client/playground";
-import { STEP_SECONDS } from "../src/client/score";
+import { EMPTY_PLAYBACK, STEP_COUNT, STEP_SECONDS } from "../src/client/score";
+import type { Playback } from "../src/client/score";
 import { fieldBounds, layoutSources, locate } from "../src/client/space";
 
 const size = { width: 900, height: 600 };
@@ -69,7 +70,6 @@ function recordingContext() {
 
 const scene: Scene = {
   document,
-  score: compose(document),
   selected: null,
   playing: false,
   reducedMotion: false,
@@ -77,13 +77,22 @@ const scene: Scene = {
   feedback: null,
 };
 
-function render(state: Scene, viewport = size, progress: number | null = null, now = 0) {
+const onsetTime = 0.05 + 2 * STEP_SECONDS;
+function playback(time = onsetTime): Playback {
+  return {
+    time,
+    position: ((time - 0.05) / STEP_SECONDS) % STEP_COUNT,
+    onsets: new Map([[1, { note: compose(document)[0], time: onsetTime }]]),
+  };
+}
+
+function render(state: Scene, viewport = size, playback: Playback = EMPTY_PLAYBACK, now = 0) {
   const recorded = recordingContext();
   drawSpace(
     recorded.context,
     state,
     viewport,
-    progress,
+    playback,
     layoutSources(state.document.sources, viewport),
     now,
   );
@@ -96,7 +105,7 @@ function core(recorded: ReturnType<typeof render>) {
 
 test("an empty field has no decorative particles, glows, or permanent guides", () => {
   expect(render(scene).fills.length).toBeGreaterThan(0);
-  const recorded = render({ ...scene, document: { sources: [] }, score: [] });
+  const recorded = render({ ...scene, document: { sources: [] } });
   expect(recorded.fills).toEqual([]);
   expect(recorded.strokes).toEqual([]);
   expect(recorded.rectangles).toEqual([]);
@@ -144,9 +153,9 @@ test("selection intensifies the material without adding a ring or moving the lig
 });
 
 test("a sounding light blooms, then returns to rest; pausing holds the bloom", () => {
-  const onset = render({ ...scene, playing: true }, size, 2);
-  const paused = render(scene, size, 2);
-  const later = render({ ...scene, playing: true }, size, 2 + 2 / STEP_SECONDS);
+  const onset = render({ ...scene, playing: true }, size, playback());
+  const paused = render(scene, size, playback());
+  const later = render({ ...scene, playing: true }, size, playback(onsetTime + 2));
   const idle = render(scene);
   expect(onset.fills[0].circle?.radius).toBe(225);
   expect(onset.fills[1].circle?.radius).toBe(87);
@@ -158,7 +167,7 @@ test("a sounding light blooms, then returns to rest; pausing holds the bloom", (
 });
 
 test("reduced motion uses illumination, not an expanding wave, growing core, or moving sweep", () => {
-  const onset = render({ ...scene, playing: true, reducedMotion: true }, size, 2);
+  const onset = render({ ...scene, playing: true, reducedMotion: true }, size, playback());
   const idle = render({ ...scene, reducedMotion: true });
   expect(core(onset)?.circle).toEqual(core(idle)?.circle);
   expect(onset.fills[1].circle?.radius).toBeGreaterThan(idle.fills[1].circle?.radius ?? Infinity);
@@ -188,7 +197,7 @@ test("placement reveals both full snapped guides and a landing point without edi
   );
   expect(recorded.fills).toContainEqual({ circle: { ...target, radius: 1 }, color: "#d7ded0d9" });
   expect(document).toEqual(before);
-  expect(compose(document)).toEqual(scene.score);
+  expect(compose(document)).toEqual(compose(before));
   expect(render(scene).strokes).toEqual([]);
 });
 
@@ -208,11 +217,50 @@ test("an occupied landing highlights the conflict without replacing the existing
     ...locate(snapSource({ id: 2, step: 2.1, tone: 7.1 }), size),
     radius: 1,
   });
-  expect(compose(document)).toEqual(scene.score);
+  expect(document.sources).toEqual([{ id: 1, step: 2, tone: 7 }]);
 });
 
 test("collision feedback expires without leaving a permanent outline", () => {
   const feedback = { collisions: [{ sourceId: 1, step: 2 }], started: 100 };
-  expect(render({ ...scene, feedback }, size, null, 200).strokes).toHaveLength(1);
-  expect(render({ ...scene, feedback }, size, null, 900).strokes).toEqual([]);
+  expect(render({ ...scene, feedback }, size, EMPTY_PLAYBACK, 200).strokes).toHaveLength(1);
+  expect(render({ ...scene, feedback }, size, EMPTY_PLAYBACK, 900).strokes).toEqual([]);
+});
+
+test("loop position alone never illuminates a note that has not struck", () => {
+  const clock = { ...EMPTY_PLAYBACK, time: 0.05, position: 0 };
+  expect(render({ ...scene, playing: true }, size, clock).fills).toEqual(render(scene).fills);
+});
+
+test("a buffered future onset cannot illuminate a note early", () => {
+  expect(render(scene, size, playback(onsetTime - 0.01)).fills).toEqual(render(scene).fills);
+});
+
+test.each([{ id: 2 }, { step: 3 }, { tone: 8 }, { tone: 10 }])(
+  "an onset does not transfer to a newly created, moved, or repitched light: %j",
+  (change) => {
+    const state = { ...scene, document: { sources: [{ ...document.sources[0], ...change }] } };
+    expect(render(state, size, playback()).fills).toEqual(render(state).fills);
+  },
+);
+
+test("a true onset carries its bloom across the loop seam without inventing later strikes", () => {
+  const source = { id: 1, step: 31, tone: 7 };
+  const state = { ...scene, document: { sources: [source] } };
+  const time = 0.05 + 33 * STEP_SECONDS;
+  const clock: Playback = {
+    time,
+    position: 1,
+    onsets: new Map([[1, { note: compose(state.document)[0], time: 0.05 + 31 * STEP_SECONDS }]]),
+  };
+  expect(render(state, size, clock).fills[0].circle?.radius).toBeCloseTo(
+    155 + 70 * Math.exp(-2 * STEP_SECONDS * 3.1),
+  );
+  expect(render(state, size, { ...clock, time: time + 32 * STEP_SECONDS }).fills).toEqual(
+    render(state).fills,
+  );
+});
+
+test("dragging previews suppress the bloom of the source's previous actual strike", () => {
+  const state = { ...scene, preview: { source: document.sources[0], collisions: [] } };
+  expect(render(state, size, playback()).fills[0].circle?.radius).toBe(155);
 });
