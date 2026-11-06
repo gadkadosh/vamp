@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import { DEFAULT_VOLUME, INSTRUMENTS, STEP_COUNT, STEP_SECONDS } from "../src/client/score";
 import type { InstrumentId, TimedNote } from "../src/client/score";
-import { compose } from "../src/client/playground";
-import type { Pattern } from "../src/client/playground";
+import { compose } from "../src/client/pattern";
+import type { Pattern } from "../src/client/pattern";
 import { Sequencer } from "../src/client/sequencer";
 import { carriers, channel, plucks, routesTo, TestAudioContext } from "./audio-context";
 

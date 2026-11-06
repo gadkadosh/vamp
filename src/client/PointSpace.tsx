@@ -3,8 +3,8 @@ import type { KeyboardEvent, PointerEvent, ReactNode } from "react";
 import { drawSpace, FEEDBACK_MS } from "./drawSpace";
 import type { Scene } from "./drawSpace";
 import type { Playback } from "./score";
-import { clamp, findCollisions, moveNote, noteLabel } from "./playground";
-import type { CollisionFeedback, Pattern, Placement, Note } from "./playground";
+import { clamp, findCollisions, moveNote, noteLabel } from "./pattern";
+import type { CollisionFeedback, Pattern, Placement, Note } from "./pattern";
 import { layoutNotes, pick, SETTLE_MS } from "./space";
 import type { SettlingMotion, Size } from "./space";
 

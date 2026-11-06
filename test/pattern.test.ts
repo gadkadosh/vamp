@@ -8,8 +8,8 @@ import {
   snapNote,
   TONES,
   toneFor,
-} from "../src/client/playground";
-import type { Pattern, Note } from "../src/client/playground";
+} from "../src/client/pattern";
+import type { Pattern, Note } from "../src/client/pattern";
 import { layoutNotes, locate, pick, SETTLE_MS } from "../src/client/space";
 import { STEP_COUNT } from "../src/client/score";
 

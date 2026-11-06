@@ -1,7 +1,7 @@
 import { STEP_COUNT } from "./score";
 import type { Playback } from "./score";
-import { snapNote, soundingStep, toneFor } from "./playground";
-import type { Collision, CollisionFeedback, Pattern, Note } from "./playground";
+import { snapNote, soundingStep, toneFor } from "./pattern";
+import type { Collision, CollisionFeedback, Pattern, Note } from "./pattern";
 import { fieldBounds, locate, TAU } from "./space";
 import type { LightProjection, Position, Size } from "./space";
 

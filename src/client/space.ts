@@ -1,6 +1,6 @@
 import { STEP_COUNT } from "./score";
-import { clamp, TONES } from "./playground";
-import type { Note } from "./playground";
+import { clamp, TONES } from "./pattern";
+import type { Note } from "./pattern";
 
 export type Size = { width: number; height: number };
 export type Position = { x: number; y: number };

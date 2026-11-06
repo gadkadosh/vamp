@@ -8,8 +8,8 @@ import {
   noteLabel,
   toneFor,
   wrapStep,
-} from "./playground";
-import type { CollisionFeedback, Pattern, Placement, Note } from "./playground";
+} from "./pattern";
+import type { CollisionFeedback, Pattern, Placement, Note } from "./pattern";
 import { Sequencer } from "./sequencer";
 import { EMPTY_PLAYBACK } from "./score";
 
