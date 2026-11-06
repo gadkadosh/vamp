@@ -85,8 +85,8 @@ export function App() {
   const pattern = history.present;
   const score = useMemo(() => compose(pattern), [pattern]);
   const scoreRef = useRef(score);
-  const engine = useRef<Sequencer | null>(null);
-  const getPlayback = useCallback(() => engine.current?.getPlayback() ?? EMPTY_PLAYBACK, []);
+  const sequencerRef = useRef<Sequencer | null>(null);
+  const getPlayback = useCallback(() => sequencerRef.current?.getPlayback() ?? EMPTY_PLAYBACK, []);
   const [selectedId, setSelected] = useState<number | null>(null);
   const selected = pattern.notes.find((note) => note.id === selectedId);
   const nextNote = useRef(Math.max(...pattern.notes.map((note) => note.id), 0) + 1);
@@ -106,10 +106,10 @@ export function App() {
 
   useEffect(() => {
     const sequencer = new Sequencer(() => scoreRef.current);
-    engine.current = sequencer;
+    sequencerRef.current = sequencer;
     return () => {
       sequencer.dispose();
-      engine.current = null;
+      sequencerRef.current = null;
     };
   }, []);
 
@@ -280,7 +280,7 @@ export function App() {
   }
 
   async function togglePlayback() {
-    const sequencer = engine.current;
+    const sequencer = sequencerRef.current;
     const previous = playbackStatusRef.current;
     if (!sequencer || previous === "starting" || previous === "pausing") return;
     updatePlaybackStatus(previous === "playing" ? "pausing" : "starting");
@@ -288,10 +288,10 @@ export function App() {
     try {
       if (previous === "playing") await sequencer.pause();
       else await sequencer.play();
-      if (engine.current !== sequencer) return;
+      if (sequencerRef.current !== sequencer) return;
       updatePlaybackStatus(previous === "playing" ? "paused" : "playing");
     } catch {
-      if (engine.current !== sequencer) return;
+      if (sequencerRef.current !== sequencer) return;
       updatePlaybackStatus(previous);
       setError(
         previous === "playing"
@@ -467,7 +467,7 @@ export function App() {
           aria-label={muted ? "Unmute audio" : "Mute audio"}
           aria-pressed={muted}
           onClick={() => {
-            engine.current?.setVolume(muted ? DEFAULT_VOLUME : 0);
+            sequencerRef.current?.setVolume(muted ? DEFAULT_VOLUME : 0);
             setMuted(!muted);
           }}
         >

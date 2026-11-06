@@ -12,19 +12,19 @@ import type { Pattern } from "../src/client/pattern";
 import { Sequencer } from "../src/client/sequencer";
 import { carriers, channel, deferred, plucks, routesTo, TestAudioContext } from "./audio-context";
 
-let sequencer: Sequencer | null;
+let activeSequencer: Sequencer | null;
 let nextNoteId: number;
 
 beforeEach(() => {
   vi.useFakeTimers();
   TestAudioContext.instances = [];
-  sequencer = null;
+  activeSequencer = null;
   nextNoteId = 1;
   vi.stubGlobal("AudioContext", TestAudioContext);
 });
 
 afterEach(() => {
-  sequencer?.dispose();
+  activeSequencer?.dispose();
   expect(vi.getTimerCount()).toBe(0);
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -42,10 +42,10 @@ function note(id: InstrumentId, name: string, step: number): TimedNote {
 }
 
 async function start(getNotes: () => TimedNote[] = () => []) {
-  const engine = new Sequencer(getNotes);
-  sequencer = engine;
-  await engine.play();
-  return { engine, context: TestAudioContext.instances.at(-1)! };
+  const sequencer = new Sequencer(getNotes);
+  activeSequencer = sequencer;
+  await sequencer.play();
+  return { sequencer, context: TestAudioContext.instances.at(-1)! };
 }
 
 function advance(context: TestAudioContext, time: number) {
@@ -113,12 +113,12 @@ test("event scheduling never duplicates buffered strikes when paused and resumed
   const notes = compose({
     notes: [{ ...floatingLight.notes[0], step: 0.25 }],
   });
-  const { engine, context } = await start(() => notes);
+  const { sequencer, context } = await start(() => notes);
   expect(carriers(context, "mallet")).toHaveLength(1);
   runUntil(context, 0.3);
-  await engine.pause();
+  await sequencer.pause();
   vi.advanceTimersByTime(2000);
-  await engine.play();
+  await sequencer.play();
   runUntil(context, 0.6);
   expect(carriers(context, "mallet")).toHaveLength(1);
 });
@@ -230,26 +230,26 @@ test.each([
 );
 
 test("the spatial playhead reads the audio clock, wraps the loop, and holds while paused", async () => {
-  const { engine, context } = await start();
-  expect(engine.getPlayback().position).toBeNull();
+  const { sequencer, context } = await start();
+  expect(sequencer.getPlayback().position).toBeNull();
   advance(context, 0.05 + STEP_SECONDS * 3.25);
-  expect(engine.getPlayback().position).toBeCloseTo(3.25);
-  await engine.pause();
+  expect(sequencer.getPlayback().position).toBeCloseTo(3.25);
+  await sequencer.pause();
   vi.advanceTimersByTime(1000);
-  expect(engine.getPlayback().position).toBeCloseTo(3.25);
-  await engine.play();
+  expect(sequencer.getPlayback().position).toBeCloseTo(3.25);
+  await sequencer.play();
   advance(context, 0.05 + STEP_SECONDS * 34.5);
-  expect(engine.getPlayback().position).toBeCloseTo(2.5);
+  expect(sequencer.getPlayback().position).toBeCloseTo(2.5);
 });
 
 test("audio starts only on Play and mallet events loop at exactly 32 steps", async () => {
   const notes = [note("mallet", "C4", 0), note("mallet", "A4", 31)];
-  const engine = new Sequencer(() => notes);
-  sequencer = engine;
+  const sequencer = new Sequencer(() => notes);
+  activeSequencer = sequencer;
   expect(TestAudioContext.instances).toHaveLength(0);
-  expect(engine.getPlayback().position).toBeNull();
-  await engine.play();
-  await engine.play();
+  expect(sequencer.getPlayback().position).toBeNull();
+  await sequencer.play();
+  await sequencer.play();
   const context = TestAudioContext.instances[0];
   expect(TestAudioContext.instances).toHaveLength(1);
   expect(context.state).toBe("running");
@@ -275,10 +275,10 @@ test("concurrent Play calls share one scheduler and Pause clears it completely",
       await pending.promise;
       this.state = "running";
     });
-  const engine = new Sequencer(() => [note("mallet", "C4", 0)]);
-  sequencer = engine;
-  const first = engine.play();
-  const second = engine.play();
+  const sequencer = new Sequencer(() => [note("mallet", "C4", 0)]);
+  activeSequencer = sequencer;
+  const first = sequencer.play();
+  const second = sequencer.play();
   expect(resume).toHaveBeenCalledTimes(1);
   expect(vi.getTimerCount()).toBe(0);
   pending.resolve();
@@ -286,7 +286,7 @@ test("concurrent Play calls share one scheduler and Pause clears it completely",
   const context = TestAudioContext.instances[0];
   expect(vi.getTimerCount()).toBe(1);
   expect(carriers(context, "mallet")).toHaveLength(1);
-  await engine.pause();
+  await sequencer.pause();
   expect(context.state).toBe("suspended");
   expect(vi.getTimerCount()).toBe(0);
   advance(context, STEP_COUNT * STEP_SECONDS);
@@ -294,15 +294,15 @@ test("concurrent Play calls share one scheduler and Pause clears it completely",
 });
 
 test("Play requested during a pending Pause waits, then resumes one scheduler", async () => {
-  const { engine, context } = await start();
+  const { sequencer, context } = await start();
   const pending = deferred();
   const suspend = vi.spyOn(context, "suspend").mockImplementationOnce(async () => {
     await pending.promise;
     context.state = "suspended";
   });
   const resume = vi.spyOn(context, "resume");
-  const paused = engine.pause();
-  const playing = engine.play();
+  const paused = sequencer.pause();
+  const playing = sequencer.play();
   expect(suspend).toHaveBeenCalledTimes(1);
   expect(resume).not.toHaveBeenCalled();
   pending.resolve();
@@ -310,7 +310,7 @@ test("Play requested during a pending Pause waits, then resumes one scheduler", 
   expect(context.state).toBe("running");
   expect(resume).toHaveBeenCalledTimes(1);
   expect(vi.getTimerCount()).toBe(1);
-  await engine.pause();
+  await sequencer.pause();
   expect(vi.getTimerCount()).toBe(0);
 });
 
@@ -323,10 +323,10 @@ test("Pause requested during startup runs after resume instead of leaving audio 
     this.state = "running";
   });
   const suspend = vi.spyOn(TestAudioContext.prototype, "suspend");
-  const engine = new Sequencer(() => []);
-  sequencer = engine;
-  const playing = engine.play();
-  const paused = engine.pause();
+  const sequencer = new Sequencer(() => []);
+  activeSequencer = sequencer;
+  const playing = sequencer.play();
+  const paused = sequencer.pause();
   expect(suspend).not.toHaveBeenCalled();
   pending.resolve();
   await Promise.all([playing, paused]);
@@ -335,24 +335,24 @@ test("Pause requested during startup runs after resume instead of leaving audio 
 });
 
 test("a rejected Pause leaves scheduling intact and can be retried", async () => {
-  const { engine, context } = await start(() => [note("mallet", "C4", 1)]);
+  const { sequencer, context } = await start(() => [note("mallet", "C4", 1)]);
   vi.spyOn(context, "suspend").mockRejectedValueOnce(new Error("Cannot suspend"));
-  await expect(engine.pause()).rejects.toThrow("Cannot suspend");
+  await expect(sequencer.pause()).rejects.toThrow("Cannot suspend");
   expect(context.state).toBe("running");
   expect(vi.getTimerCount()).toBe(1);
   advance(context, 0.15);
   expect(carriers(context, "mallet")).toHaveLength(1);
-  await engine.pause();
+  await sequencer.pause();
   expect(context.state).toBe("suspended");
   expect(vi.getTimerCount()).toBe(0);
 });
 
 test("a rejected Play does not block a queued retry", async () => {
   vi.spyOn(TestAudioContext.prototype, "resume").mockRejectedValueOnce(new Error("Cannot resume"));
-  const engine = new Sequencer(() => [note("mallet", "C4", 0)]);
-  sequencer = engine;
-  const failed = engine.play();
-  const retry = engine.play();
+  const sequencer = new Sequencer(() => [note("mallet", "C4", 0)]);
+  activeSequencer = sequencer;
+  const failed = sequencer.play();
+  const retry = sequencer.play();
   await expect(failed).rejects.toThrow("Cannot resume");
   await retry;
   const context = TestAudioContext.instances[0];
@@ -364,11 +364,11 @@ test("a rejected Play does not block a queued retry", async () => {
 test("disposing during startup prevents pending and queued commands from scheduling", async () => {
   const pending = deferred();
   vi.spyOn(TestAudioContext.prototype, "resume").mockReturnValueOnce(pending.promise);
-  const engine = new Sequencer(() => [note("mallet", "C4", 0)]);
-  sequencer = engine;
-  const first = engine.play();
-  const second = engine.play();
-  engine.dispose();
+  const sequencer = new Sequencer(() => [note("mallet", "C4", 0)]);
+  activeSequencer = sequencer;
+  const first = sequencer.play();
+  const second = sequencer.play();
+  sequencer.dispose();
   pending.resolve();
   await Promise.all([first, second]);
   const context = TestAudioContext.instances[0];
@@ -401,15 +401,15 @@ test("live edits schedule chords in multiple instruments without retaining remov
 
 test("pause preserves overlapping voices and resumes scheduling without re-striking", async () => {
   const notes = [note("keys", "E5", 0), note("bass", "C2", 0), note("mallet", "C4", 1)];
-  const { context, engine } = await start(() => notes);
+  const { context, sequencer } = await start(() => notes);
   advance(context, 0.1);
-  await engine.pause();
+  await sequencer.pause();
   vi.advanceTimersByTime(2000);
   expect(context.state).toBe("suspended");
   expect(carriers(context, "keys")).toHaveLength(4);
   expect(plucks(context, "bass")).toHaveLength(1);
   expect(carriers(context, "mallet")).toHaveLength(0);
-  await engine.play();
+  await sequencer.play();
   expect(TestAudioContext.instances).toHaveLength(1);
   expect(carriers(context, "mallet")).toHaveLength(0);
   advance(context, 0.15);
@@ -420,11 +420,11 @@ test("pause preserves overlapping voices and resumes scheduling without re-strik
 });
 
 test("master mute works before audio starts and unmute smoothly restores the volume", async () => {
-  const engine = new Sequencer(() => []);
-  sequencer = engine;
-  engine.setVolume(0);
+  const sequencer = new Sequencer(() => []);
+  activeSequencer = sequencer;
+  sequencer.setVolume(0);
   expect(TestAudioContext.instances).toHaveLength(0);
-  await engine.play();
+  await sequencer.play();
   const context = TestAudioContext.instances[0];
   expect(context.gains[0].gain.value).toBe(0);
   expect(context.gains[0].connect).toHaveBeenCalledWith(context.destination);
@@ -433,7 +433,7 @@ test("master mute works before audio starts and unmute smoothly restores the vol
     expect(channel(context, id).gain.value).toBe(1);
   }
   advance(context, 0.23);
-  engine.setVolume(DEFAULT_VOLUME);
+  sequencer.setVolume(DEFAULT_VOLUME);
   expect(context.gains[0].gain.setTargetAtTime).toHaveBeenLastCalledWith(
     DEFAULT_VOLUME,
     0.23,
@@ -477,11 +477,11 @@ test("the bass's generated string loses energy over time and reuses buffers only
 });
 
 test("dispose stops scheduling, closes audio, and prevents subsequent playback", async () => {
-  const { context, engine } = await start(() => [note("mallet", "C4", 0)]);
+  const { context, sequencer } = await start(() => [note("mallet", "C4", 0)]);
   expect(carriers(context, "mallet")).toHaveLength(1);
-  engine.dispose();
+  sequencer.dispose();
   advance(context, STEP_COUNT * STEP_SECONDS);
-  await engine.play();
+  await sequencer.play();
   expect(context.state).toBe("closed");
   expect(TestAudioContext.instances).toHaveLength(1);
   expect(carriers(context, "mallet")).toHaveLength(1);
@@ -489,40 +489,40 @@ test("dispose stops scheduling, closes audio, and prevents subsequent playback",
 
 test("playback exposes actual onsets only after their buffered start time arrives", async () => {
   const notes = [note("mallet", "C4", 0), note("keys", "E5", 30)];
-  const { context, engine } = await start(() => notes);
+  const { context, sequencer } = await start(() => notes);
   expect(carriers(context, "mallet")).toHaveLength(1);
-  expect(engine.getPlayback().onsets.size).toBe(0);
+  expect(sequencer.getPlayback().onsets.size).toBe(0);
   advance(context, 0.05);
-  const playback = engine.getPlayback();
+  const playback = sequencer.getPlayback();
   expect(playback.time).toBe(0.05);
   expect([...playback.onsets.values()]).toEqual([{ note: notes[0], time: 0.05 }]);
 });
 
 test("a future loop's buffered strike does not replace the previous actual onset early", async () => {
   const notes = [note("mallet", "C4", 0)];
-  const { context, engine } = await start(() => notes);
+  const { context, sequencer } = await start(() => notes);
   const next = 0.05 + STEP_COUNT * STEP_SECONDS;
   advance(context, next - 0.05);
   expect(carriers(context, "mallet")).toHaveLength(2);
-  expect(engine.getPlayback().onsets.get(notes[0].noteId)?.time).toBe(0.05);
+  expect(sequencer.getPlayback().onsets.get(notes[0].noteId)?.time).toBe(0.05);
   advance(context, next);
-  expect(engine.getPlayback().onsets.get(notes[0].noteId)?.time).toBe(next);
+  expect(sequencer.getPlayback().onsets.get(notes[0].noteId)?.time).toBe(next);
 });
 
 test("new notes behind the playhead have no onset until their next actual strike", async () => {
   let notes: TimedNote[] = [];
-  const { context, engine } = await start(() => notes);
+  const { context, sequencer } = await start(() => notes);
   advance(context, 0.05 + 2 * STEP_SECONDS);
   notes = [note("mallet", "C4", 1)];
   advance(context, 0.05 + 3 * STEP_SECONDS);
-  expect(engine.getPlayback().onsets.size).toBe(0);
+  expect(sequencer.getPlayback().onsets.size).toBe(0);
   expect(carriers(context, "mallet")).toHaveLength(0);
   const next = 0.05 + STEP_COUNT * STEP_SECONDS + STEP_SECONDS;
   advance(context, next - 0.05);
   expect(carriers(context, "mallet")).toHaveLength(1);
-  expect(engine.getPlayback().onsets.size).toBe(0);
+  expect(sequencer.getPlayback().onsets.size).toBe(0);
   advance(context, next);
-  expect(engine.getPlayback().onsets.get(notes[0].noteId)).toEqual({
+  expect(sequencer.getPlayback().onsets.get(notes[0].noteId)).toEqual({
     note: notes[0],
     time: next,
   });
@@ -530,29 +530,29 @@ test("new notes behind the playhead have no onset until their next actual strike
 
 test("a stalled scheduler never reports missed strikes as if they played", async () => {
   let notes: TimedNote[] = [];
-  const { context, engine } = await start(() => notes);
+  const { context, sequencer } = await start(() => notes);
   notes = [note("mallet", "C4", 4)];
   advance(context, 0.05 + 5 * STEP_SECONDS);
   expect(carriers(context, "mallet")).toHaveLength(0);
-  expect(engine.getPlayback().onsets.size).toBe(0);
+  expect(sequencer.getPlayback().onsets.size).toBe(0);
 });
 
 test("onset identity is a snapshot of what was scheduled, not a mutable score reference", async () => {
   const notes = [note("mallet", "C4", 0)];
   const original = { ...notes[0] };
-  const { context, engine } = await start(() => notes);
+  const { context, sequencer } = await start(() => notes);
   notes[0].row = row("mallet", "E4");
   advance(context, 0.05);
-  expect(engine.getPlayback().onsets.get(original.noteId)?.note).toEqual(original);
+  expect(sequencer.getPlayback().onsets.get(original.noteId)?.note).toEqual(original);
 });
 
 test("playback drops old onset history even after all notes are deleted", async () => {
   let notes = [note("mallet", "C4", 0)];
-  const { context, engine } = await start(() => notes);
+  const { context, sequencer } = await start(() => notes);
   advance(context, 0.05);
-  expect(engine.getPlayback().onsets.size).toBe(1);
+  expect(sequencer.getPlayback().onsets.size).toBe(1);
   notes = [];
   advance(context, 100);
-  expect(engine.getPlayback().onsets.size).toBe(0);
+  expect(sequencer.getPlayback().onsets.size).toBe(0);
   expect(carriers(context, "mallet")).toHaveLength(1);
 });
