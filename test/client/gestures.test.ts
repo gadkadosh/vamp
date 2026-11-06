@@ -5,8 +5,8 @@ import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import { App } from "../../src/client/App";
 import { locate } from "../../src/client/space";
-import { STEP_SECONDS } from "../../src/client/score";
-import { TestAudioContext } from "../audio-context";
+import { DEFAULT_VOLUME, STEP_SECONDS } from "../../src/client/score";
+import { deferred, TestAudioContext } from "../audio-context";
 
 const size = { width: 900, height: 600 };
 let root: Root;
@@ -652,6 +652,89 @@ test("an unchanged paused surface schedules no animation frames or repeated redr
   const count = draws.mock.calls.length;
   frame(1000);
   expect(draws).toHaveBeenCalledTimes(count);
+  expect(frames.size).toBe(0);
+});
+
+test("an unavailable canvas context does not break editing or playback controls", async () => {
+  await act(async () => root.render(null));
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+  await act(async () => root.render(createElement(StrictMode, null, createElement(App))));
+  expect(notes()).toHaveLength(20);
+  act(() => surface().focus());
+  key("Enter");
+  expect(notes()).toHaveLength(21);
+  await act(async () => button("Play loop").click());
+  expect(TestAudioContext.instances[0].state).toBe("running");
+  expect(button("Pause loop").disabled).toBe(false);
+  expect(frames.size).toBe(0);
+});
+
+test("same-turn playback input is ignored while startup is pending", async () => {
+  const pending = deferred();
+  const resume = vi
+    .spyOn(TestAudioContext.prototype, "resume")
+    .mockImplementationOnce(async function (this: TestAudioContext) {
+      await pending.promise;
+      this.state = "running";
+    });
+  act(() => {
+    button("Play loop").click();
+    surface().dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
+  });
+  expect(button("Play loop").disabled).toBe(true);
+  expect(button("Play loop").getAttribute("aria-busy")).toBe("true");
+  expect(resume).toHaveBeenCalledTimes(1);
+  expect(frames.size).toBe(0);
+  await act(async () => pending.resolve());
+  expect(button("Pause loop").disabled).toBe(false);
+  expect(button("Pause loop").getAttribute("aria-pressed")).toBe("true");
+  expect(TestAudioContext.instances[0].state).toBe("running");
+  expect(frames.size).toBe(1);
+});
+
+test("failed playback transitions restore the controls and allow retry", async () => {
+  vi.spyOn(TestAudioContext.prototype, "resume").mockRejectedValueOnce(new Error("Cannot resume"));
+  await act(async () => button("Play loop").click());
+  expect(button("Play loop").disabled).toBe(false);
+  expect(element('[role="status"]').textContent).toContain("Audio couldn’t start");
+  expect(frames.size).toBe(0);
+  await act(async () => button("Play loop").click());
+  const context = TestAudioContext.instances[0];
+  vi.spyOn(context, "suspend").mockRejectedValueOnce(new Error("Cannot suspend"));
+  await act(async () => button("Pause loop").click());
+  expect(button("Pause loop").disabled).toBe(false);
+  expect(element('[role="status"]').textContent).toContain("Audio couldn’t pause");
+  expect(context.state).toBe("running");
+  expect(frames.size).toBe(1);
+  await act(async () => button("Pause loop").click());
+  expect(button("Play loop").getAttribute("aria-pressed")).toBe("false");
+  expect(context.state).toBe("suspended");
+  expect(frames.size).toBe(0);
+});
+
+test("mute before Play stays silent while playback and animation run independently", async () => {
+  click(button("Mute audio"));
+  expect(button("Unmute audio").getAttribute("aria-pressed")).toBe("true");
+  expect(TestAudioContext.instances).toHaveLength(0);
+  await act(async () => button("Play loop").click());
+  const context = TestAudioContext.instances[0];
+  expect(context.gains[0].gain.value).toBe(0);
+  expect(context.state).toBe("running");
+  expect(frames.size).toBe(1);
+  context.currentTime = 0.05;
+  frame();
+  expect(glowAt(0, 6)).toBe(225);
+  click(button("Unmute audio"));
+  expect(context.gains[0].gain.setTargetAtTime).toHaveBeenLastCalledWith(
+    DEFAULT_VOLUME,
+    0.05,
+    0.02,
+  );
+  expect(button("Pause loop").getAttribute("aria-pressed")).toBe("true");
+  click(button("Mute audio"));
+  await act(async () => button("Pause loop").click());
+  expect(button("Unmute audio").getAttribute("aria-pressed")).toBe("true");
+  expect(context.state).toBe("suspended");
   expect(frames.size).toBe(0);
 });
 

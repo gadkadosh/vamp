@@ -3,7 +3,7 @@ import { PointSpace } from "./PointSpace";
 import {
   compose,
   createPattern,
-  MATERIALS,
+  PITCH_BANDS,
   placeNote,
   noteLabel,
   toneFor,
@@ -11,8 +11,9 @@ import {
 } from "./pattern";
 import type { CollisionFeedback, Pattern, Placement, Note } from "./pattern";
 import { Sequencer } from "./sequencer";
-import { EMPTY_PLAYBACK } from "./score";
+import { DEFAULT_VOLUME, EMPTY_PLAYBACK, INSTRUMENTS } from "./score";
 
+type PlaybackStatus = "paused" | "starting" | "playing" | "pausing";
 type History = { present: Pattern; past: Pattern[]; future: Pattern[] };
 type IconName =
   | "play"
@@ -89,8 +90,10 @@ export function App() {
   const [selectedId, setSelected] = useState<number | null>(null);
   const selected = pattern.notes.find((note) => note.id === selectedId);
   const nextNote = useRef(Math.max(...pattern.notes.map((note) => note.id), 0) + 1);
-  const [playing, setPlaying] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const playbackStatusRef = useRef<PlaybackStatus>("paused");
+  const [playbackStatus, setPlaybackStatus] = useState<PlaybackStatus>("paused");
+  const playing = playbackStatus === "playing" || playbackStatus === "pausing";
+  const busy = playbackStatus === "starting" || playbackStatus === "pausing";
   const [muted, setMuted] = useState(false);
   const [help, setHelp] = useState(false);
   const [menu, setMenu] = useState(false);
@@ -270,18 +273,31 @@ export function App() {
     return () => window.removeEventListener("keydown", keyDown);
   }, []);
 
+  function updatePlaybackStatus(status: PlaybackStatus) {
+    // The ref guards same-turn input before React renders the disabled button.
+    playbackStatusRef.current = status;
+    setPlaybackStatus(status);
+  }
+
   async function togglePlayback() {
-    if (!engine.current || busy) return;
-    setBusy(true);
+    const sequencer = engine.current;
+    const previous = playbackStatusRef.current;
+    if (!sequencer || previous === "starting" || previous === "pausing") return;
+    updatePlaybackStatus(previous === "playing" ? "pausing" : "starting");
     setError("");
     try {
-      if (playing) await engine.current.pause();
-      else await engine.current.play();
-      setPlaying(!playing);
+      if (previous === "playing") await sequencer.pause();
+      else await sequencer.play();
+      if (engine.current !== sequencer) return;
+      updatePlaybackStatus(previous === "playing" ? "paused" : "playing");
     } catch {
-      setError("Audio couldn’t start. Please try Play again.");
-    } finally {
-      setBusy(false);
+      if (engine.current !== sequencer) return;
+      updatePlaybackStatus(previous);
+      setError(
+        previous === "playing"
+          ? "Audio couldn’t pause. Please try Pause again."
+          : "Audio couldn’t start. Please try Play again.",
+      );
     }
   }
 
@@ -394,7 +410,7 @@ export function App() {
               />
               <span className="selected-pitch">{toneFor(note).note.name}</span>
               <span className="selected-material">
-                {MATERIALS.find(({ instrument }) => instrument === toneFor(note).instrument)?.name}
+                {INSTRUMENTS[toneFor(note).instrument].name}
               </span>
               <button
                 className="icon-button"
@@ -451,7 +467,7 @@ export function App() {
           aria-label={muted ? "Unmute audio" : "Mute audio"}
           aria-pressed={muted}
           onClick={() => {
-            engine.current?.setVolume(muted ? 0.35 : 0);
+            engine.current?.setVolume(muted ? DEFAULT_VOLUME : 0);
             setMuted(!muted);
           }}
         >
@@ -493,8 +509,8 @@ export function App() {
         >
           <defs>
             <radialGradient id="guide-glow">
-              <stop stopColor={MATERIALS[2].color} stopOpacity=".3" />
-              <stop offset="1" stopColor={MATERIALS[2].color} stopOpacity="0" />
+              <stop stopColor={PITCH_BANDS[2].color} stopOpacity=".3" />
+              <stop offset="1" stopColor={PITCH_BANDS[2].color} stopOpacity="0" />
             </radialGradient>
           </defs>
           <path
@@ -510,13 +526,13 @@ export function App() {
             Higher
           </text>
           <circle cx="160" cy="53" r="40" fill="url(#guide-glow)" />
-          {MATERIALS.map((material, index) => (
+          {PITCH_BANDS.map((band, index) => (
             <circle
-              key={material.instrument}
+              key={band.instrument}
               cx={[86, 126, 160, 226][index]}
               cy={[77, 64, 53, 35][index]}
               r={index === 2 ? 5 : 4}
-              fill={material.color}
+              fill={band.color}
             />
           ))}
         </svg>

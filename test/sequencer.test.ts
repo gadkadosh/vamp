@@ -1,10 +1,16 @@
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
-import { DEFAULT_VOLUME, INSTRUMENTS, STEP_COUNT, STEP_SECONDS } from "../src/client/score";
+import {
+  DEFAULT_VOLUME,
+  INSTRUMENTS,
+  INSTRUMENT_IDS,
+  STEP_COUNT,
+  STEP_SECONDS,
+} from "../src/client/score";
 import type { InstrumentId, TimedNote } from "../src/client/score";
 import { compose } from "../src/client/pattern";
 import type { Pattern } from "../src/client/pattern";
 import { Sequencer } from "../src/client/sequencer";
-import { carriers, channel, plucks, routesTo, TestAudioContext } from "./audio-context";
+import { carriers, channel, deferred, plucks, routesTo, TestAudioContext } from "./audio-context";
 
 let sequencer: Sequencer | null;
 let nextNoteId: number;
@@ -19,16 +25,14 @@ beforeEach(() => {
 
 afterEach(() => {
   sequencer?.dispose();
+  expect(vi.getTimerCount()).toBe(0);
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
-function instrument(id: InstrumentId) {
-  return INSTRUMENTS.find((item) => item.id === id)!;
-}
-
 function row(id: InstrumentId, name: string) {
-  const index = instrument(id).notes.findIndex((note) => note.name === name);
+  const index = INSTRUMENTS[id].notes.findIndex((note) => note.name === name);
   expect(index).toBeGreaterThanOrEqual(0);
   return index;
 }
@@ -90,7 +94,7 @@ test.each([
 
 test("felt lights retain their partial tuning", async () => {
   const { context } = await start(() => compose({ notes: [{ id: 1, step: 0, tone: 11 }] }));
-  const frequency = instrument("keys").notes[row("keys", "A4")].frequency;
+  const frequency = INSTRUMENTS.keys.notes[row("keys", "A4")].frequency;
   expect(carriers(context, "keys").map((source) => source.frequency.value)).toEqual(
     [1, 2.003, 3.009, 4.02].map((ratio) => frequency * ratio),
   );
@@ -252,11 +256,125 @@ test("audio starts only on Play and mallet events loop at exactly 32 steps", asy
   expect(context.gains[0].gain.value).toBe(DEFAULT_VOLUME);
   runUntil(context, STEP_SECONDS * STEP_COUNT + 0.1);
   const voices = carriers(context, "mallet");
-  expect(voices.map((voice) => voice.frequency.value)).toEqual([261.626, 440, 261.626]);
+  expect(voices.map((voice) => voice.frequency.value)).toEqual([
+    expect.closeTo(261.625565, 5),
+    440,
+    expect.closeTo(261.625565, 5),
+  ]);
   const times = voices.map((voice) => voice.start.mock.calls[0][0]);
   expect(times[0]).toBeCloseTo(0.05);
   expect(times[1]).toBeCloseTo(0.05 + 31 * STEP_SECONDS);
   expect(times[2] - times[0]).toBeCloseTo(STEP_COUNT * STEP_SECONDS);
+});
+
+test("concurrent Play calls share one scheduler and Pause clears it completely", async () => {
+  const pending = deferred();
+  const resume = vi
+    .spyOn(TestAudioContext.prototype, "resume")
+    .mockImplementationOnce(async function (this: TestAudioContext) {
+      await pending.promise;
+      this.state = "running";
+    });
+  const engine = new Sequencer(() => [note("mallet", "C4", 0)]);
+  sequencer = engine;
+  const first = engine.play();
+  const second = engine.play();
+  expect(resume).toHaveBeenCalledTimes(1);
+  expect(vi.getTimerCount()).toBe(0);
+  pending.resolve();
+  await Promise.all([first, second]);
+  const context = TestAudioContext.instances[0];
+  expect(vi.getTimerCount()).toBe(1);
+  expect(carriers(context, "mallet")).toHaveLength(1);
+  await engine.pause();
+  expect(context.state).toBe("suspended");
+  expect(vi.getTimerCount()).toBe(0);
+  advance(context, STEP_COUNT * STEP_SECONDS);
+  expect(carriers(context, "mallet")).toHaveLength(1);
+});
+
+test("Play requested during a pending Pause waits, then resumes one scheduler", async () => {
+  const { engine, context } = await start();
+  const pending = deferred();
+  const suspend = vi.spyOn(context, "suspend").mockImplementationOnce(async () => {
+    await pending.promise;
+    context.state = "suspended";
+  });
+  const resume = vi.spyOn(context, "resume");
+  const paused = engine.pause();
+  const playing = engine.play();
+  expect(suspend).toHaveBeenCalledTimes(1);
+  expect(resume).not.toHaveBeenCalled();
+  pending.resolve();
+  await Promise.all([paused, playing]);
+  expect(context.state).toBe("running");
+  expect(resume).toHaveBeenCalledTimes(1);
+  expect(vi.getTimerCount()).toBe(1);
+  await engine.pause();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test("Pause requested during startup runs after resume instead of leaving audio running", async () => {
+  const pending = deferred();
+  vi.spyOn(TestAudioContext.prototype, "resume").mockImplementationOnce(async function (
+    this: TestAudioContext,
+  ) {
+    await pending.promise;
+    this.state = "running";
+  });
+  const suspend = vi.spyOn(TestAudioContext.prototype, "suspend");
+  const engine = new Sequencer(() => []);
+  sequencer = engine;
+  const playing = engine.play();
+  const paused = engine.pause();
+  expect(suspend).not.toHaveBeenCalled();
+  pending.resolve();
+  await Promise.all([playing, paused]);
+  expect(TestAudioContext.instances[0].state).toBe("suspended");
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test("a rejected Pause leaves scheduling intact and can be retried", async () => {
+  const { engine, context } = await start(() => [note("mallet", "C4", 1)]);
+  vi.spyOn(context, "suspend").mockRejectedValueOnce(new Error("Cannot suspend"));
+  await expect(engine.pause()).rejects.toThrow("Cannot suspend");
+  expect(context.state).toBe("running");
+  expect(vi.getTimerCount()).toBe(1);
+  advance(context, 0.15);
+  expect(carriers(context, "mallet")).toHaveLength(1);
+  await engine.pause();
+  expect(context.state).toBe("suspended");
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test("a rejected Play does not block a queued retry", async () => {
+  vi.spyOn(TestAudioContext.prototype, "resume").mockRejectedValueOnce(new Error("Cannot resume"));
+  const engine = new Sequencer(() => [note("mallet", "C4", 0)]);
+  sequencer = engine;
+  const failed = engine.play();
+  const retry = engine.play();
+  await expect(failed).rejects.toThrow("Cannot resume");
+  await retry;
+  const context = TestAudioContext.instances[0];
+  expect(context.state).toBe("running");
+  expect(carriers(context, "mallet")).toHaveLength(1);
+  expect(vi.getTimerCount()).toBe(1);
+});
+
+test("disposing during startup prevents pending and queued commands from scheduling", async () => {
+  const pending = deferred();
+  vi.spyOn(TestAudioContext.prototype, "resume").mockReturnValueOnce(pending.promise);
+  const engine = new Sequencer(() => [note("mallet", "C4", 0)]);
+  sequencer = engine;
+  const first = engine.play();
+  const second = engine.play();
+  engine.dispose();
+  pending.resolve();
+  await Promise.all([first, second]);
+  const context = TestAudioContext.instances[0];
+  expect(context.state).toBe("closed");
+  expect(carriers(context, "mallet")).toHaveLength(0);
+  expect(vi.getTimerCount()).toBe(0);
 });
 
 test("live edits schedule chords in multiple instruments without retaining removed notes", async () => {
@@ -270,7 +388,10 @@ test("live edits schedule chords in multiple instruments without retaining remov
   ];
   advance(context, 0.15);
   const mallet = carriers(context, "mallet");
-  expect(mallet.map((voice) => voice.frequency.value)).toEqual([440, 329.628]);
+  expect(mallet.map((voice) => voice.frequency.value)).toEqual([
+    440,
+    expect.closeTo(329.627557, 5),
+  ]);
   expect(carriers(context, "glass")).toHaveLength(6);
   for (const voice of [...mallet, ...carriers(context, "glass")])
     expect(voice.start).toHaveBeenCalledExactlyOnceWith(0.05 + STEP_SECONDS);
@@ -307,7 +428,7 @@ test("master mute works before audio starts and unmute smoothly restores the vol
   const context = TestAudioContext.instances[0];
   expect(context.gains[0].gain.value).toBe(0);
   expect(context.gains[0].connect).toHaveBeenCalledWith(context.destination);
-  for (const { id } of INSTRUMENTS) {
+  for (const id of INSTRUMENT_IDS) {
     expect(channel(context, id).connect).toHaveBeenCalledWith(context.gains[0]);
     expect(channel(context, id).gain.value).toBe(1);
   }
@@ -331,7 +452,7 @@ test.each(["mallet", "keys", "bass", "glass"] as const)(
       voice.onended!();
       expect(voice.disconnect).toHaveBeenCalledTimes(1);
     }
-    for (const part of [...context.filters, ...context.gains.slice(INSTRUMENTS.length + 1)])
+    for (const part of [...context.filters, ...context.gains.slice(INSTRUMENT_IDS.length + 1)])
       expect(part.disconnect).toHaveBeenCalledTimes(1);
     expect(channel(context, id).disconnect).not.toHaveBeenCalled();
     expect(context.gains[0].disconnect).not.toHaveBeenCalled();

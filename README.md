@@ -36,7 +36,7 @@ Dragging is a local preview: the original music continues until a valid release,
 
 Keyboard: Tab into the space. **Page Up / Page Down** select the previous/next light in time order, with lower pitches first at the same beat, and wrap around the loop. On Mac laptops, use Fn + ↑ / ↓. Arrows select the first light if none is selected, then move the selection one rhythmic step left/right or one pitch up/down. Enter adds a light. Keyboard focus follows the selected light and uses a small frame; pointer selection does not show it. Delete/Backspace removes; Escape deselects; Space plays or pauses. The surface has one Tab stop: the selected light, or the space itself when nothing is selected. Tab then visits the selected note’s copy/remove controls and leaves the surface. Navigation does not change the music or undo/redo history. Individual lights expose descriptive accessible names with their material, pitch, and beat position.
 
-The musical rules are deterministic. A single ascending tone axis passes through bass, mallet, melody, and glass materials, with color following material. It uses a subset of each voice’s original range so moving higher never drops the pitch when crossing a material boundary. The starting pattern adapts the original seed phrases to this axis.
+The musical rules are deterministic. A single ascending tone axis passes through bass, mallet, felt keys, and glass materials, with color following material. It uses a subset of each voice’s original range so moving higher never drops the pitch when crossing a material boundary. The starting pattern adapts the original seed phrases to this axis.
 
 Lights land on 32 timing positions and 19 pitches, without a preallocated number of dots. **Felt keys are polyphonic**: different notes at the same beat form a chord, and overlapping notes decay independently. Mallet and glass also permit chords.
 
@@ -74,9 +74,9 @@ The smoke test uses Wrangler’s test harness, independently of Cloudflare’s V
 - `src/client/PointSpace.tsx`: Direct manipulation, grouped gestures, keyboard interaction, accessible hit targets, and canvas lifecycle.
 - `src/client/drawSpace.ts`: Audio-clock-driven lights, active-placement guides, landing previews, and playheads.
 - `src/client/space.ts`: 2D mapping, inverse picking, and shared light/hit-target settling animation.
-- `src/client/pattern.ts`: Pattern and note models, tone/material registry, magnetic placement transactions, collision validation, and event compilation.
-- `src/client/score.ts`: Voice definitions, ranges, polyphony, seed onsets, and note-event/playback types.
-- `src/client/sequencer.ts`, `voices.ts`: Audio-clock scheduler and synthesized voices.
+- `src/client/pattern.ts`: Pattern and note models, ascending interface pitch bands, magnetic placement transactions, collision validation, and event compilation. Bands select subsets of instrument ranges; pitch-name mappings are validated when constructing tones and the starting pattern.
+- `src/client/score.ts`: Keyed instrument registry with names, voices, pitch ranges, polyphony, and seed onsets; shared pitch lookup and note-event/playback types.
+- `src/client/sequencer.ts`, `voices.ts`: Audio-clock scheduler, serialized Play/Pause transitions, and synthesized voices.
 - `test/`: React gesture/history and render-lifecycle tests in Happy DOM, canvas renderer tests, spatial round-trip and musical behavior tests, scheduler tests with a controlled clock, and the Worker smoke test. Evaluate actual sound in a Web Audio-capable browser.
 - `src/server/`: Worker entry point, `/api/health`, and the empty `Room` class.
 - `vite.config.ts`, `wrangler.jsonc`: Local development and Worker configuration.

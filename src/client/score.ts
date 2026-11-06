@@ -14,30 +14,11 @@ function pitches(midis: readonly number[]): Note[] {
   }));
 }
 
-const MELODY_NOTES = pitches([76, 74, 72, 71, 69, 67, 65, 64, 62, 60]);
-const MELODY_SEED = [
-  ["E5", 2],
-  ["D5", 6],
-  ["C5", 10],
-  ["B4", 14],
-  ["C5", 18],
-  ["G4", 22],
-  ["A4", 26],
-  ["E5", 30],
-] as const;
-
-export const INSTRUMENTS = [
-  {
-    id: "mallet",
+export const INSTRUMENTS = {
+  mallet: {
     name: "Mallet",
     polyphonic: true,
-    notes: [
-      { name: "A4", frequency: 440 },
-      { name: "G4", frequency: 391.995 },
-      { name: "E4", frequency: 329.628 },
-      { name: "D4", frequency: 293.665 },
-      { name: "C4", frequency: 261.626 },
-    ],
+    notes: pitches([69, 67, 64, 62, 60]),
     start: scheduleMallet,
     seed: [
       ["C4", 0],
@@ -50,17 +31,23 @@ export const INSTRUMENTS = [
       ["E4", 28],
     ],
   },
-  {
-    id: "keys",
+  keys: {
     name: "Felt keys",
     polyphonic: true,
-    // Full C major: F and B add melodic movement beyond the original pentatonic.
-    notes: MELODY_NOTES,
+    notes: pitches([76, 74, 72, 71, 69, 67, 65, 64, 62, 60]),
     start: startFeltKeys,
-    seed: MELODY_SEED,
+    seed: [
+      ["E5", 2],
+      ["D5", 6],
+      ["C5", 10],
+      ["B4", 14],
+      ["C5", 18],
+      ["G4", 22],
+      ["A4", 26],
+      ["E5", 30],
+    ],
   },
-  {
-    id: "bass",
+  bass: {
     name: "Plucked bass",
     polyphonic: false,
     notes: pitches([48, 45, 43, 40, 38, 36]),
@@ -70,8 +57,7 @@ export const INSTRUMENTS = [
       ["G2", 16],
     ],
   },
-  {
-    id: "glass",
+  glass: {
     name: "Glass chimes",
     polyphonic: true,
     notes: pitches([84, 81, 79, 76, 74, 72]),
@@ -81,8 +67,16 @@ export const INSTRUMENTS = [
       ["C6", 26],
     ],
   },
-] as const;
-export type InstrumentId = (typeof INSTRUMENTS)[number]["id"];
+} as const;
+export type InstrumentId = keyof typeof INSTRUMENTS;
+export const INSTRUMENT_IDS = Object.keys(INSTRUMENTS) as readonly InstrumentId[];
+
+export function pitchRow(instrument: InstrumentId, name: string): number {
+  const row = INSTRUMENTS[instrument].notes.findIndex((note) => note.name === name);
+  if (row < 0) throw new Error(`Unknown pitch ${name} for ${instrument}`);
+  return row;
+}
+
 export type TimedNote = {
   noteId: number;
   instrument: InstrumentId;
