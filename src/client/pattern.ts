@@ -8,13 +8,17 @@ export const INSTRUMENT_LAYOUT = [
     color: "#6dcbb0",
     notes: ["C2", "D2", "E2", "G2", "A2", "C3"],
   },
-  { instrument: "mallet", color: "#efbb67", notes: ["C4", "D4", "E4"] },
+  {
+    instrument: "mallet",
+    color: "#efbb67",
+    notes: ["D3", "E3", "G3", "A3", "C4", "D4", "E4"],
+  },
   {
     instrument: "keys",
     color: "#e99db3",
-    notes: ["F4", "G4", "A4", "B4", "C5", "D5", "E5"],
+    notes: ["F4", "G4", "A4", "B4", "C5", "D5", "E5", "G5"],
   },
-  { instrument: "glass", color: "#a5b4f6", notes: ["G5", "A5", "C6"] },
+  { instrument: "glass", color: "#a5b4f6", notes: ["A5", "C6", "D6", "E6"] },
 ] as const satisfies readonly {
   instrument: InstrumentId;
   color: string;

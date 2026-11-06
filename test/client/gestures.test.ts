@@ -5,10 +5,14 @@ import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import { App } from "../../src/client/App";
 import { locate } from "../../src/client/space";
+import { TONES } from "../../src/client/pattern";
 import { DEFAULT_VOLUME, STEP_SECONDS } from "../../src/client/score";
 import { deferred, TestAudioContext } from "../audio-context";
 
 const size = { width: 900, height: 600 };
+const malletC4 = TONES.findIndex((tone) => tone.instrument === "mallet" && tone.note.name === "C4");
+const malletE4 = TONES.findIndex((tone) => tone.instrument === "mallet" && tone.note.name === "E4");
+const keysE5 = TONES.findIndex((tone) => tone.instrument === "keys" && tone.note.name === "E5");
 let root: Root;
 let frames: Map<number, FrameRequestCallback>;
 let wallTime: number;
@@ -196,8 +200,9 @@ function paint() {
 }
 
 function drag() {
-  pointer("pointerdown", 0, 6, element('[data-light="1"]'));
-  pointer("pointermove", 2, 6);
+  pointer("pointerdown", 0, malletC4, element('[data-light="1"]'));
+  pointer("pointermove", 2, malletC4);
+  expect(surface().classList.contains("is-dragging")).toBe(true);
 }
 
 function expectFinished() {
@@ -311,8 +316,8 @@ test("deleting during a drag removes the original note and release cannot recrea
   expect(document.querySelector('[data-light="1"]')).toBeNull();
   expect(notes()).toHaveLength(before.length - 1);
   expectFinished();
-  pointer("pointerup", 2, 6);
-  pointer("lostpointercapture", 2, 6);
+  pointer("pointerup", 2, malletC4);
+  pointer("lostpointercapture", 2, malletC4);
   expect(document.querySelector('[data-light="1"]')).toBeNull();
   click(button("Undo"));
   expect(notes()).toEqual(before);
@@ -326,7 +331,7 @@ test("a keyboard nudge cancels the draft and edits the original position exactly
   const nudged = notes();
   expect(nudged[0]).toContain("beat position 2 of 32");
   expectFinished();
-  pointer("pointerup", 2, 6);
+  pointer("pointerup", 2, malletC4);
   expect(notes()).toEqual(nudged);
   click(button("Undo"));
   expect(notes()).toEqual(before);
@@ -341,7 +346,7 @@ test("Undo cancels an ordinary drag without consuming the preceding completed ed
   key("z", { metaKey: true });
   expect(notes()).toEqual(before);
   expectFinished();
-  pointer("pointerup", 2, 6);
+  pointer("pointerup", 2, malletC4);
   expect(notes()).toEqual(before);
   click(button("Undo"));
   expect(notes()).toEqual(seed);
@@ -352,7 +357,7 @@ test("Enter interrupts scattering and adds only the requested keyboard note", ()
   paint();
   key("Enter");
   expect(notes()).toHaveLength(before.length + 1);
-  expect(notes().at(-1)).toContain("F4, beat position 17 of 32");
+  expect(notes().at(-1)).toContain("E4, beat position 17 of 32");
   const added = notes();
   expectFinished();
   pointer("pointerup", 8, 10);
@@ -367,10 +372,10 @@ test.each(["pointercancel", "lostpointercapture", "blur"])(
     const before = notes();
     drag();
     if (interruption === "blur") blur();
-    else pointer(interruption, 2, 6);
+    else pointer(interruption, 2, malletC4);
     expect(notes()).toEqual(before);
     expectFinished();
-    pointer("pointerup", 2, 6);
+    pointer("pointerup", 2, malletC4);
     expect(notes()).toEqual(before);
     expect(button("Undo").disabled).toBe(true);
   },
@@ -392,7 +397,7 @@ test("clear interrupts scattering and undo restores the phrase before the gestur
 test("a completed drag is still undoable as one edit", () => {
   const before = notes();
   drag();
-  pointer("pointerup", 2, 6);
+  pointer("pointerup", 2, malletC4);
   const moved = notes();
   expect(moved[0]).toContain("beat position 3 of 32");
   expectFinished();
@@ -573,13 +578,13 @@ test("switching to pointer selection does not retain the keyboard focus treatmen
   key("PageUp");
   expectSelected(16);
   const light = element('[data-light="1"]');
-  pointer("pointerdown", 0, 6, light);
-  pointer("pointerup", 0, 6);
+  pointer("pointerdown", 0, malletC4, light);
+  pointer("pointerup", 0, malletC4);
   expect(document.activeElement).toBe(light);
   expect(light.getAttribute("aria-pressed")).toBe("true");
   expect(surface().classList.contains("is-keyboard")).toBe(false);
-  pointer("pointerdown", 0, 6, light);
-  pointer("pointerup", 0, 6);
+  pointer("pointerdown", 0, malletC4, light);
+  pointer("pointerup", 0, malletC4);
   expect(document.activeElement).toBe(surface());
   expect(light.getAttribute("aria-pressed")).toBe("false");
 });
@@ -600,18 +605,18 @@ test.each(["select", "drag", "remove"])(
     const topmost = compactNeighbors();
     const neighbor = element('[data-light="2"]');
     const before = notes();
-    const center = locate({ id: 2, step: 4, tone: 8 }, size);
+    const center = locate({ id: 2, step: 4, tone: malletE4 }, size);
     const hit = topmost.getBoundingClientRect();
     expect(Math.hypot(center.x - (hit.x + 18), center.y - (hit.y + 18))).toBeLessThan(18);
     // The browser delivers this point to the later, overlapping button, not note 2.
-    pointer("pointerdown", 4, 8, topmost, { button: action === "remove" ? 2 : 0 });
+    pointer("pointerdown", 4, malletE4, topmost, { button: action === "remove" ? 2 : 0 });
     if (action === "remove") {
       expect(document.querySelector('[data-light="2"]')).toBeNull();
       expect(notes()).toEqual(before.filter((_, index) => index !== 1));
       return;
     }
-    if (action === "drag") pointer("pointermove", 2, 8);
-    pointer("pointerup", action === "drag" ? 2 : 4, 8);
+    if (action === "drag") pointer("pointermove", 2, malletE4);
+    pointer("pointerup", action === "drag" ? 2 : 4, malletE4);
     expect(document.activeElement).toBe(neighbor);
     expect(neighbor.getAttribute("aria-pressed")).toBe("true");
     expect(topmost.getAttribute("aria-label")).toBe(before[2]);
@@ -623,14 +628,14 @@ test.each(["select", "drag", "remove"])(
 
 test("mobile pointer hits follow a settling note rather than its committed landing point", () => {
   const light = compactNeighbors();
-  pointer("pointerdown", 5, 8, light);
-  pointer("pointermove", 4.4, 8);
-  pointer("pointerup", 4.4, 8);
+  pointer("pointerdown", 5, malletE4, light);
+  pointer("pointermove", 4.4, malletE4);
+  pointer("pointerup", 4.4, malletE4);
   // The occupied landing at step 4 sends it back to step 5, but it is still near step 4.
   key("Escape");
   frame(18);
-  pointer("pointerdown", 4.4, 8);
-  pointer("pointerup", 4.4, 8);
+  pointer("pointerdown", 4.4, malletE4);
+  pointer("pointerup", 4.4, malletE4);
   expect(document.activeElement).toBe(light);
   expect(light.getAttribute("aria-pressed")).toBe("true");
   expect(light.getAttribute("aria-label")).toContain("beat position 6 of 32");
@@ -638,8 +643,8 @@ test("mobile pointer hits follow a settling note rather than its committed landi
 
 test("keyboard input outside the surface never steals focus or changes the selected note", () => {
   const light = element('[data-light="1"]');
-  pointer("pointerdown", 0, 6, light);
-  pointer("pointerup", 0, 6);
+  pointer("pointerdown", 0, malletC4, light);
+  pointer("pointerup", 0, malletC4);
   const mute = button("Mute audio");
   act(() => mute.focus());
   expect(key("PageDown").defaultPrevented).toBe(false);
@@ -720,7 +725,7 @@ test("mute before Play stays silent while playback and animation run independent
   expect(frames.size).toBe(1);
   context.currentTime = 0.05;
   frame();
-  expect(glowAt(0, 6)).toBe(225);
+  expect(glowAt(0, malletC4)).toBe(225);
   click(button("Unmute audio"));
   expect(context.gains[0].gain.setTargetAtTime).toHaveBeenLastCalledWith(
     DEFAULT_VOLUME,
@@ -740,9 +745,9 @@ test("the first loop illuminates only notes whose scheduled onset has actually a
   const context = TestAudioContext.instances[0];
   context.currentTime = 0.05;
   frame();
-  expect(glowAt(0, 6)).toBe(225);
-  expect(glowAt(30, 15)).toBe(155);
-  expect(glowAt(28, 8)).toBe(155);
+  expect(glowAt(0, malletC4)).toBe(225);
+  expect(glowAt(30, keysE5)).toBe(155);
+  expect(glowAt(28, malletE4)).toBe(155);
 });
 
 test("idle edits redraw once and unrelated status changes do not redraw the canvas", () => {
@@ -812,19 +817,19 @@ test("pause holds the actual bloom without drawing, and resume restarts the anim
   const context = TestAudioContext.instances[0];
   context.currentTime = 0.05;
   frame();
-  expect(glowAt(0, 6)).toBe(225);
+  expect(glowAt(0, malletC4)).toBe(225);
   await act(async () => button("Pause loop").click());
   expect(frames.size).toBe(0);
   const paused = draws.mock.calls.length;
   frame(1000);
   expect(draws).toHaveBeenCalledTimes(paused);
-  expect(glowAt(0, 6)).toBe(225);
+  expect(glowAt(0, malletC4)).toBe(225);
   await act(async () => button("Play loop").click());
   expect(frames.size).toBe(1);
   context.currentTime = 0.2;
   frame();
-  expect(glowAt(0, 6)).toBeLessThan(225);
-  expect(glowAt(0, 6)).toBeGreaterThan(155);
+  expect(glowAt(0, malletC4)).toBeLessThan(225);
+  expect(glowAt(0, malletC4)).toBeGreaterThan(155);
 });
 
 test("adding a light at the current buffered beat does not invent a strike", async () => {
@@ -841,13 +846,13 @@ test("repitching a ringing light does not transfer its bloom to the new pitch", 
   const context = TestAudioContext.instances[0];
   context.currentTime = 0.05;
   frame();
-  expect(glowAt(0, 6)).toBe(225);
+  expect(glowAt(0, malletC4)).toBe(225);
   enterSurface();
   key("PageDown");
   key("PageDown");
   key("ArrowUp");
   expectSelected(1);
-  expect(glowAt(0, 7)).toBe(155);
+  expect(glowAt(0, malletC4 + 1)).toBe(155);
 });
 
 test("playback does not rewrite static hit positions or poll toolbar layout every frame", async () => {
@@ -904,7 +909,7 @@ test("resizing a paused surface redraws the canvas and relocates hit targets wit
   const resized = { width: 1100, height: size.height };
   const before = draws.mock.calls.length;
   act(() => observers.get(surface())!([{ contentRect: resized }]));
-  const target = locate({ id: 16, step: 30, tone: 15 }, resized);
+  const target = locate({ id: 16, step: 30, tone: keysE5 }, resized);
   expect(parseFloat(element('[data-light="16"]').style.left)).toBeCloseTo(target.x);
   expect(element<HTMLCanvasElement>("canvas").width).toBe(1100);
   expect(draws.mock.calls.length).toBeGreaterThan(before);

@@ -18,7 +18,7 @@ export const INSTRUMENTS = {
   mallet: {
     name: "Mallet",
     polyphonic: true,
-    notes: pitches([69, 67, 64, 62, 60]),
+    notes: pitches([69, 67, 64, 62, 60, 57, 55, 52, 50]),
     start: scheduleMallet,
     seed: [
       ["C4", 0],
@@ -34,7 +34,7 @@ export const INSTRUMENTS = {
   keys: {
     name: "Felt keys",
     polyphonic: true,
-    notes: pitches([76, 74, 72, 71, 69, 67, 65, 64, 62, 60]),
+    notes: pitches([79, 76, 74, 72, 71, 69, 67, 65, 64, 62, 60]),
     start: startFeltKeys,
     seed: [
       ["E5", 2],
@@ -60,7 +60,7 @@ export const INSTRUMENTS = {
   glass: {
     name: "Glass chimes",
     polyphonic: true,
-    notes: pitches([84, 81, 79, 76, 74, 72]),
+    notes: pitches([88, 86, 84, 81, 79, 76, 74, 72]),
     start: scheduleGlass,
     seed: [
       ["E5", 10],
