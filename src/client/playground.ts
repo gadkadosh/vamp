@@ -1,5 +1,5 @@
 import { INSTRUMENTS, STEP_COUNT, VOICE_POLYPHONY } from "./score";
-import type { InstrumentId, TimedNote } from "./score";
+import type { TimedNote } from "./score";
 
 const MATERIALS = [
   { instrument: "bass", color: "#94bfa5", notes: ["C2", "D2", "E2", "G2", "A2", "C3"] },
@@ -25,7 +25,7 @@ export type Source = { id: number; step: number; tone: number; energy?: number }
 export const energyFor = (source: Source) => clamp(source.energy ?? 0.5);
 // Neutral intensity preserves the original loudness.
 export const gainForEnergy = (energy: number) => 0.18 + clamp(energy) * 1.64;
-export type Constellation = { sources: Source[]; voice: "keys" | "nylon" };
+export type Constellation = { sources: Source[] };
 export type SpatialNote = TimedNote & { sourceId: number };
 export type Collision = { sourceId: number; step: number };
 export type CollisionFeedback = { collisions: Collision[]; started: number };
@@ -51,7 +51,6 @@ export function createConstellation(): Constellation {
   let id = 0;
   const sources: Source[] = [];
   for (const instrument of INSTRUMENTS) {
-    if (instrument.id === "nylon") continue;
     for (const [name, step] of instrument.seed) {
       const frequency = instrument.notes.find((note) => note.name === name)!.frequency;
       const candidates = TONES.map((tone, index) => ({ ...tone, index })).filter(
@@ -63,12 +62,7 @@ export function createConstellation(): Constellation {
       sources.push({ id: ++id, step, tone: closest.index });
     }
   }
-  return { sources, voice: "keys" };
-}
-
-export function instrumentFor(source: Source, voice: Constellation["voice"]): InstrumentId {
-  const instrument = toneFor(source).instrument;
-  return instrument === "keys" ? voice : instrument;
+  return { sources };
 }
 
 export function findCollisions(document: Constellation, candidate: Source): Collision[] {
@@ -108,7 +102,7 @@ export function compose(document: Constellation): SpatialNote[] {
   return document.sources
     .map((source) => ({
       sourceId: source.id,
-      instrument: instrumentFor(source, document.voice),
+      instrument: toneFor(source).instrument,
       row: toneFor(source).row,
       step: soundingStep(source.step),
       ...(source.energy === undefined ? {} : { gain: gainForEnergy(source.energy) }),
@@ -124,7 +118,7 @@ export function moveSource(source: Source, stepDelta: number, toneDelta: number)
   };
 }
 
-export function sourceLabel(source: Source, voice: Constellation["voice"]): string {
-  const instrument = INSTRUMENTS.find(({ id }) => id === instrumentFor(source, voice))!;
+export function sourceLabel(source: Source): string {
+  const instrument = INSTRUMENTS.find(({ id }) => id === toneFor(source).instrument)!;
   return `Note ${source.id}: ${instrument.name}, ${toneFor(source).note.name}, beat position ${soundingStep(source.step) + 1} of ${STEP_COUNT}${source.energy === undefined ? "" : `, intensity ${Math.round(energyFor(source) * 100)} percent`}`;
 }

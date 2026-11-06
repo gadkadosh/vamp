@@ -24,8 +24,7 @@ type IconName =
   | "help"
   | "sound"
   | "mute"
-  | "duplicate"
-  | "voice";
+  | "duplicate";
 function Icon({ name }: { name: IconName }) {
   return (
     <svg
@@ -63,10 +62,6 @@ function Icon({ name }: { name: IconName }) {
         <>
           <rect x="8" y="8" width="12" height="12" rx="3" />
           <path d="M15 8V4H4v11h4" />
-        </>
-      ) : name === "voice" ? (
-        <>
-          <path d="M3 12c3-14 5 14 9 0s6 14 9 0" />
         </>
       ) : (
         <>
@@ -117,9 +112,7 @@ function App() {
   }, []);
   useEffect(() => {
     scoreRef.current = score;
-    engine.current?.setEnabled("keys", document.voice === "keys");
-    engine.current?.setEnabled("nylon", document.voice === "nylon");
-  }, [score, document.voice]);
+  }, [score]);
 
   function apply(next: History) {
     historyRef.current = next;
@@ -342,7 +335,7 @@ function App() {
               <div>
                 <dt>Every note has a voice</dt>
                 <dd>
-                  Felt and nylon can form chords. Bass has one note per beat: an occupied landing
+                  Felt keys can form chords. Bass has one note per beat: an occupied landing
                   flashes, and an invalid drag returns home. Identical sounds also flash instead of
                   creating a silent duplicate.
                 </dd>
@@ -427,21 +420,6 @@ function App() {
           </span>
           <span className="tool-divider" />
           <button
-            className={`icon-button voice-button${document.voice === "nylon" ? " active" : ""}`}
-            title={`Melody material: ${document.voice === "keys" ? "felt" : "nylon"}. Click to switch.`}
-            aria-label="Use nylon melody instead of felt"
-            aria-pressed={document.voice === "nylon"}
-            onClick={() => {
-              edit((previous) => ({
-                ...previous,
-                voice: previous.voice === "keys" ? "nylon" : "keys",
-              }));
-              setMessage("The same notes, with a different melodic texture.");
-            }}
-          >
-            <Icon name="voice" />
-          </button>
-          <button
             className="icon-button"
             title={muted ? "Unmute" : "Mute"}
             aria-label="Mute audio"
@@ -460,7 +438,7 @@ function App() {
         <span>Just this visit. Nothing is saved.</span>
       </div>
       <p className="sr-only" aria-live="polite">
-        {selected ? sourceLabel(selected, document.voice) : "No note selected."}
+        {selected ? sourceLabel(selected) : "No note selected."}
       </p>
     </main>
   );

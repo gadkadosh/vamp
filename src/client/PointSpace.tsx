@@ -296,7 +296,7 @@ export function PointSpace(props: Props) {
           data-light={source.id}
           className="light-hit"
           style={{ left: position.x, top: position.y }}
-          aria-label={sourceLabel(source, props.document.voice)}
+          aria-label={sourceLabel(source)}
           aria-pressed={scene.selected === source.id}
           tabIndex={props.selected === source.id ? 0 : -1}
           onFocus={() => props.onSelect(source.id)}

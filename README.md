@@ -32,13 +32,13 @@ Dragging is a local preview: the original music continues until a valid release,
 - **Shift-drag empty space:** scatter a trail of lights as one undoable gesture.
 - **Right-click a light**, or select it and use the lower bin button, to remove it. The duplicate button adds a copy four steps later.
 - **Undo / Redo:** buttons or Cmd/Ctrl Z / Cmd/Ctrl Shift Z. Each drag or scattered trail is one history entry. Clear and reset are also undoable.
-- **Wave icon:** switch the melody’s material between felt and nylon while preserving the same lights. The speaker toggles master mute; unmuted volume is 35%.
+- **Speaker icon:** toggle master mute; unmuted volume is 35%.
 
 Keyboard: Tab into the space. Enter adds a light; arrows select the first light if none is selected, then move the selection one rhythmic step left/right or one pitch up/down. Small corner marks identify keyboard focus on a light; pointer selection does not show them. Delete/Backspace removes; Escape deselects; Space plays or pauses. Tab leaves the surface and its selected controls. Individual lights expose descriptive accessible names with their material, pitch, and beat position.
 
 The musical rules are deterministic. A single ascending tone axis passes through bass, mallet, melody, and glass materials, with color following material. It uses a subset of each voice’s original range so moving higher never drops the pitch when crossing a material boundary. The starting constellation adapts the original seed phrases to this axis.
 
-Lights land on 32 timing positions and 19 pitches, without a preallocated number of dots. **Felt keys and nylon are polyphonic**: different notes at the same beat form a chord, and overlapping notes decay independently. Mallet and glass also permit chords.
+Lights land on 32 timing positions and 19 pitches, without a preallocated number of dots. **Felt keys are polyphonic**: different notes at the same beat form a chord, and overlapping notes decay independently. Mallet and glass also permit chords.
 
 **Bass has one note per rhythmic step.** Occupied landing points turn red and highlight the conflicting light. A new conflicting placement is rejected; a conflicting drag returns to its previous location. Identical sounds at the same beat are also rejected rather than creating silent duplicates. These rules apply to placement, dragging, duplication, keyboard moves, and scattering. A conflicting operation leaves every existing light unchanged and creates no undo entry. No light is silently ignored, and nothing is automatically shifted to another beat.
 
@@ -46,7 +46,7 @@ Everything—including history—lives in memory in the current tab. Reloading r
 
 ## Audio and visualization
 
-Five synthesized acoustic sketches are available: mallet, felt keys, nylon pluck, plucked bass, and glass chimes. Felt and nylon are alternatives for the same melodic lights, never doubled together. These are synthesized sketches, not recordings or physically accurate replicas.
+Four synthesized acoustic sketches are available: mallet, felt keys, plucked bass, and glass chimes. Felt keys are the single melodic voice; there is no material switch. These are synthesized sketches, not recordings or physically accurate replicas.
 
 All sounds share a two-measure 4/4 loop at 88 BPM in C major, with 32 sixteenth-note timing positions. Each material has its own natural decay, with no editable note lengths or visual tails. Bass damps at the next bass onset; other notes overlap independently. Notes can ring across the loop seam rather than being cut short. Lights glow briefly when they sound. Each new loop re-articulates the phrase. Pause freezes the Web Audio clock and holds the visual playhead; mute does not stop it. The visual playhead reads that same clock rather than running a separate animation timer.
 

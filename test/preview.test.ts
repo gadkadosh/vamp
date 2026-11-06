@@ -5,7 +5,7 @@ import { compose, snapSource } from "../src/client/playground";
 import { fieldBounds, layoutSources, locate } from "../src/client/space";
 
 const size = { width: 900, height: 600 };
-const document: Scene["document"] = { voice: "keys", sources: [{ id: 1, step: 2, tone: 7 }] };
+const document: Scene["document"] = { sources: [{ id: 1, step: 2, tone: 7 }] };
 const candidate = { id: 2, step: 12.31, tone: 11.18 };
 
 function recordingContext() {

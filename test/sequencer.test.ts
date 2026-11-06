@@ -72,7 +72,7 @@ function sources(context: TestAudioContext, id: InstrumentId) {
   return [...carriers(context, id), ...plucks(context, id)];
 }
 
-const monoIds = ["keys", "nylon", "bass"] as const;
+const monoIds = ["keys", "bass"] as const;
 
 async function startTimed(getNotes: () => TimedNote[]) {
   const engine = new Sequencer(getNotes, onStep);
@@ -82,22 +82,18 @@ async function startTimed(getNotes: () => TimedNote[]) {
 }
 
 const floatingLight: Constellation = {
-  voice: "keys",
   sources: [{ id: 1, step: 2.37, tone: 7.13 }],
 };
 
 test.each([
-  ["bass", 2, "keys", 2.8, 1],
-  ["mallet", 7, "keys", 0.9, 1],
-  ["keys", 11, "keys", 2.43, 4],
-  ["nylon", 11, "nylon", 2.2, 1],
-  ["glass", 17, "keys", 2.83, 3],
+  ["bass", 2, 2.8, 1],
+  ["mallet", 7, 0.9, 1],
+  ["keys", 11, 2.43, 4],
+  ["glass", 17, 2.83, 3],
 ] as const)(
   "%s rings to its natural end without a fixed note-length cutoff",
-  async (id, tone, voice, seconds, count) => {
-    const { context } = await startTimed(() =>
-      compose({ voice, sources: [{ id: 1, step: 0, tone }] }),
-    );
+  async (id, tone, seconds, count) => {
+    const { context } = await startTimed(() => compose({ sources: [{ id: 1, step: 0, tone }] }));
     runUntil(context, 3.2);
     const voices = sources(context, id);
     expect(voices).toHaveLength(count);
@@ -110,16 +106,14 @@ test.each([
 );
 
 test.each([
-  ["bass", 2, "keys"],
-  ["mallet", 7, "keys"],
-  ["keys", 11, "keys"],
-  ["nylon", 11, "nylon"],
-  ["glass", 17, "keys"],
+  ["bass", 2],
+  ["mallet", 7],
+  ["keys", 11],
+  ["glass", 17],
 ] as const)(
   "per-note intensity reaches the actual %s envelope without moving its onset",
-  async (id, tone, voice) => {
+  async (id, tone) => {
     const notes = compose({
-      voice,
       sources: [
         { id: 1, step: 0, tone, energy: 0.1 },
         { id: 2, step: 4, tone, energy: 0.95 },
@@ -144,6 +138,21 @@ test.each([
     expect(starts).toContain(0.05 + 4 * STEP_SECONDS);
   },
 );
+
+test("melodic lights use the unchanged felt timbre at neutral intensity", async () => {
+  const { context } = await startTimed(() => compose({ sources: [{ id: 1, step: 0, tone: 11 }] }));
+  const frequency = instrument("keys").notes[row("keys", "A4")].frequency;
+  expect(carriers(context, "keys").map((source) => source.frequency.value)).toEqual(
+    [1, 2.003, 3.009, 4.02].map((ratio) => frequency * ratio),
+  );
+  const peaks = context.gains
+    .filter((gain) => routesTo(gain, channel(context, "keys")))
+    .flatMap((gain) => gain.gain.linearRampToValueAtTime.mock.calls)
+    .filter(([value]) => value > 0)
+    .map(([value]) => value);
+  expect(peaks).toEqual([0.065, 0.014, 0.0045, 0.0015]);
+  expect(plucks(context, "keys")).toEqual([]);
+});
 
 test("magnetic lights always schedule on the beat, including raw draft inputs", async () => {
   const { context } = await startTimed(() => compose(floatingLight));
@@ -237,31 +246,23 @@ test("bass damps only on the next bass onset, including across the loop seam", a
   expect(strings[2].stop).toHaveBeenCalledExactlyOnceWith(0.05 + 32 * STEP_SECONDS + 2.8);
 });
 
-test("felt and nylon chords decay independently when simultaneous and later notes overlap", async () => {
-  for (const id of ["keys", "nylon"] as const) {
-    sequencer?.dispose();
-    const notes: TimedNote[] = [
-      { instrument: id, row: 0, step: 0 },
-      { instrument: id, row: 1, step: 0 },
-      { instrument: id, row: 2, step: 1 },
-    ];
-    const { engine, context } = await startTimed(() => notes);
-    engine.setEnabled(id, true);
-    runUntil(context, 0.3);
-    const fundamentals =
-      id === "keys"
-        ? carriers(context, id).filter((_, index) => index % 4 === 0)
-        : plucks(context, id);
-    expect(fundamentals).toHaveLength(3);
-    expect(fundamentals[0].start).toHaveBeenCalledWith(0.05);
-    expect(fundamentals[1].start).toHaveBeenCalledWith(0.05);
-    expect(fundamentals[2].start.mock.calls[0][0]).toBeCloseTo(0.05 + STEP_SECONDS, 10);
-    runUntil(context, 3);
-    const seconds = id === "keys" ? 2.43 : 2.2;
-    for (const source of fundamentals) {
-      expect(source.stop).toHaveBeenCalledTimes(1);
-      expect(source.stop.mock.calls[0][0] - source.start.mock.calls[0][0]).toBeCloseTo(seconds, 10);
-    }
+test("felt chords decay independently when simultaneous and later notes overlap", async () => {
+  const notes: TimedNote[] = [
+    { instrument: "keys", row: 0, step: 0 },
+    { instrument: "keys", row: 1, step: 0 },
+    { instrument: "keys", row: 2, step: 1 },
+  ];
+  const { context } = await startTimed(() => notes);
+  runUntil(context, 0.3);
+  const fundamentals = carriers(context, "keys").filter((_, index) => index % 4 === 0);
+  expect(fundamentals).toHaveLength(3);
+  expect(fundamentals[0].start).toHaveBeenCalledWith(0.05);
+  expect(fundamentals[1].start).toHaveBeenCalledWith(0.05);
+  expect(fundamentals[2].start.mock.calls[0][0]).toBeCloseTo(0.05 + STEP_SECONDS, 10);
+  runUntil(context, 3);
+  for (const source of fundamentals) {
+    expect(source.stop).toHaveBeenCalledTimes(1);
+    expect(source.stop.mock.calls[0][0] - source.start.mock.calls[0][0]).toBeCloseTo(2.43, 10);
   }
 });
 
@@ -280,7 +281,7 @@ test("the spatial playhead reads the audio clock, wraps the loop, and holds whil
 
 test("the ensemble has distinct ranges and roles, with more than five melodic pitches", () => {
   const patterns = createSeedPatterns();
-  expect(INSTRUMENTS.map((item) => item.id)).toEqual(["mallet", "keys", "nylon", "bass", "glass"]);
+  expect(INSTRUMENTS.map((item) => item.id)).toEqual(["mallet", "keys", "bass", "glass"]);
   expect(instrument("keys").notes.map((note) => note.name)).toEqual([
     "E5",
     "D5",
@@ -309,22 +310,9 @@ test("the ensemble has distinct ranges and roles, with more than five melodic pi
   expect(DEFAULT_ENABLED).toEqual({
     mallet: true,
     keys: true,
-    nylon: false,
     bass: true,
     glass: true,
   });
-});
-
-test("nylon and felt keys share a starting melody and range but their edits are independent", () => {
-  const patterns = createSeedPatterns();
-  expect(instrument("nylon").notes).toEqual(instrument("keys").notes);
-  expect(patterns.nylon).toEqual(patterns.keys);
-  expect(patterns.nylon).not.toBe(patterns.keys);
-  expect(patterns.nylon[0]).not.toBe(patterns.keys[0]);
-  const edited = togglePatternCell(patterns, "nylon", 0, 0);
-  expect(edited.nylon[0][0]).toBe(true);
-  expect(edited.keys[0][0]).toBe(false);
-  expect(edited.keys).toBe(patterns.keys);
 });
 
 test.each(monoIds)(
@@ -543,31 +531,10 @@ test("the bass's generated string loses energy over time and reuses buffers only
   expect(late).toBeLessThan(early / 3);
 });
 
-test("nylon has a finite, decaying generated string and reuses only matching pitch buffers", async () => {
-  const patterns = emptyPatterns();
-  paint(patterns, "nylon", "C4", 0);
-  paint(patterns, "nylon", "C4", 2);
-  paint(patterns, "nylon", "E5", 4);
-  const { context } = await start(patterns);
-  runUntil(context, 0.85);
-  const voices = plucks(context, "nylon");
-  expect(voices).toHaveLength(3);
-  expect(voices[0].buffer).toBe(voices[1].buffer);
-  expect(voices[2].buffer).not.toBe(voices[0].buffer);
-  const data = voices[0].buffer!.getChannelData(0);
-  const rms = (values: Float32Array) =>
-    Math.sqrt(values.reduce((sum, value) => sum + value * value, 0) / values.length);
-  expect(rms(data.slice(0, context.sampleRate * 0.04))).toBeGreaterThan(0.05);
-  expect(rms(data.slice(context.sampleRate, context.sampleRate * 1.5))).toBeLessThan(
-    rms(data.slice(0, context.sampleRate * 0.1)) / 10,
-  );
-  expect(data.length / context.sampleRate).toBe(2.2);
-});
-
 test("a stalled scheduler skips missed strikes and damps mono notes whose cells have passed", async () => {
   const patterns = emptyPatterns();
   patterns.mallet[0].fill(true);
-  patterns.keys[0][0] = patterns.nylon[0][0] = patterns.bass[0][0] = true;
+  patterns.keys[0][0] = patterns.bass[0][0] = true;
   const { context, engine } = await start(patterns);
   advance(context, 2);
   const time = 0.05 + 12 * STEP_SECONDS;

@@ -1,4 +1,4 @@
-import { scheduleGlass, scheduleMallet, startBass, startFeltKeys, startNylon } from "./voices";
+import { scheduleGlass, scheduleMallet, startBass, startFeltKeys } from "./voices";
 
 export const TEMPO = 88;
 export const STEP_COUNT = 32;
@@ -14,7 +14,6 @@ function pitches(midis: readonly number[]): Note[] {
   }));
 }
 
-// The two melody alternatives start with the same range and phrase for comparison.
 const MELODY_NOTES = pitches([76, 74, 72, 71, 69, 67, 65, 64, 62, 60]);
 const MELODY_SEED = [
   ["E5", 2, 2],
@@ -63,15 +62,6 @@ export const INSTRUMENTS = [
     seed: MELODY_SEED,
   },
   {
-    id: "nylon",
-    name: "Nylon pluck",
-    description: "Alternative melody · plucked string · one note at a time",
-    mode: "mono",
-    notes: MELODY_NOTES,
-    start: startNylon,
-    seed: MELODY_SEED,
-  },
-  {
     id: "bass",
     name: "Plucked bass",
     description: "Foundation · one note at a time",
@@ -101,14 +91,12 @@ export type InstrumentId = (typeof INSTRUMENTS)[number]["id"];
 export const VOICE_POLYPHONY: Record<InstrumentId, boolean> = {
   mallet: true,
   keys: true,
-  nylon: true,
   bass: false,
   glass: true,
 };
 export const DEFAULT_ENABLED: Record<InstrumentId, boolean> = {
   mallet: true,
   keys: true,
-  nylon: false,
   bass: true,
   glass: true,
 };

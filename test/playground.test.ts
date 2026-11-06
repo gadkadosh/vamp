@@ -3,7 +3,6 @@ import {
   compose,
   createConstellation,
   findCollisions,
-  instrumentFor,
   moveSource,
   placeSource,
   snapSource,
@@ -15,7 +14,7 @@ import { layoutSources, locate, pick, SETTLE_MS } from "../src/client/space";
 import { STEP_COUNT } from "../src/client/score";
 
 const light: Source = { id: 1, step: 3, tone: 7 };
-const documentOf = (...sources: Source[]): Constellation => ({ sources, voice: "keys" });
+const documentOf = (...sources: Source[]): Constellation => ({ sources });
 
 function add(document: Constellation, source: Source) {
   const result = placeSource(document, source);
@@ -51,7 +50,7 @@ test("landing snaps both timing and pitch, wraps the loop seam, and is idempoten
   ]);
 });
 
-test("felt and nylon allow several different pitches at the same beat, all with audible events", () => {
+test("felt keys allow several different pitches at the same beat, all with audible events", () => {
   let document = add(documentOf(), { ...light, tone: 10 });
   document = add(document, { ...light, id: 2, tone: 11.2 });
   document = add(document, { ...light, id: 3, tone: 13 });
@@ -60,9 +59,6 @@ test("felt and nylon allow several different pitches at the same beat, all with 
   expect(felt.map((note) => note.sourceId)).toEqual([1, 2, 3]);
   expect(new Set(felt.map((note) => note.row)).size).toBe(3);
   expect(felt.every((note) => note.instrument === "keys" && note.step === 3)).toBe(true);
-  const nylon = compose({ ...document, voice: "nylon" });
-  expect(nylon.every((note) => note.instrument === "nylon")).toBe(true);
-  expect(nylon.map((note) => ({ ...note, instrument: "keys" }))).toEqual(felt);
 });
 
 test("a second bass pitch at an occupied beat is rejected without changing either source", () => {
@@ -122,7 +118,7 @@ test("every accepted light contributes exactly one note and one hit target", () 
     expect(notes.filter((note) => note.sourceId === source.id)).toEqual([
       {
         sourceId: source.id,
-        instrument: instrumentFor(source, document.voice),
+        instrument: toneFor(source).instrument,
         row: toneFor(source).row,
         step: source.step,
       },
@@ -204,7 +200,6 @@ test("the seed has no conflicting or silent lights and projection never changes 
   );
   for (const source of document.sources) {
     expect(findCollisions(document, source)).toEqual([]);
-    expect(instrumentFor(source, document.voice)).toBe(toneFor(source).instrument);
     locate(source, { width: 1000, height: 600 });
   }
   expect(document).toEqual(before);
