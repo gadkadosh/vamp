@@ -24,14 +24,14 @@ Press **Play** to hear the starting phrase. Tap empty space to add a light; drag
 
 Notes follow the pointer freely while being dragged. A faint landing point previews the nearest rhythmic step **and** pitch; release to settle gently onto both. Horizontal and vertical positions both snap. Dragging preserves the grab point. Moving past the right edge stays on the last timing step instead of wrapping unexpectedly to the beginning.
 
-Dragging is a local preview: the original music continues until a valid release, so passing through an occupied place does not change the composition. Pointer cancellation returns the light home. Settling and bounce animations keep canvas lights and their hit targets aligned, and honor reduced-motion preferences. Timing is always quantized; there is no free-rhythm switch.
+Dragging is a local preview: the original music continues until a valid release, so passing through an occupied place does not change the composition. Escape, pointer cancellation, loss of pointer capture, or the browser window losing focus returns the light home. These interruptions also discard an unfinished scattered trail. Settling and bounce animations keep canvas lights and their hit targets aligned, and honor reduced-motion preferences. Timing is always quantized; there is no free-rhythm switch.
 
 ### Gestures
 
 - **Click empty space:** add a light at its magnetic landing point. **Tap a light:** select it; tap it again to deselect. **Drag a light:** preview a new timing and pitch, then release to commit. Small pointer movements count as taps, not edits.
 - **Shift-drag empty space:** scatter a trail of lights as one undoable gesture.
 - **Right-click a light**, or select it and use its nearby bin button, to remove it. The duplicate button adds a copy four steps later.
-- **Undo / Redo:** buttons or Cmd/Ctrl Z / Cmd/Ctrl Shift Z. Each drag or scattered trail is one history entry. Clear and reset are also undoable.
+- **Undo / Redo:** buttons or Cmd/Ctrl Z / Cmd/Ctrl Shift Z. Each completed drag or scattered trail is one history entry. Undo during an unfinished gesture cancels only that gesture. Redo or another editing command cancels the gesture before applying the requested action. Canceling preserves the existing undo/redo history, and releasing a canceled gesture does nothing. Clear and reset are also undoable.
 - **Speaker icon:** toggle master mute; unmuted volume is 35%.
 
 Keyboard: Tab into the space. Enter adds a light; arrows select the first light if none is selected, then move the selection one rhythmic step left/right or one pitch up/down. A small frame identifies keyboard focus on a light; pointer selection does not show it. Delete/Backspace removes; Escape deselects; Space plays or pauses. Tab leaves the surface and its selected controls. Individual lights expose descriptive accessible names with their material, pitch, and beat position.
@@ -67,14 +67,15 @@ The smoke test uses Wrangler’s test harness, independently of Cloudflare’s V
 
 ## Structure
 
-- `src/client/main.tsx`, `style.css`: Application shell, playback, history, and discovery guide.
+- `src/client/main.tsx`, `style.css`: Application bootstrap and styling.
+- `src/client/App.tsx`: Application shell, playback, transactional gesture history, and discovery guide.
 - `src/client/PointSpace.tsx`: Direct manipulation, grouped gestures, keyboard interaction, accessible hit targets, and canvas lifecycle.
 - `src/client/drawSpace.ts`: Audio-clock-driven lights, active-placement guides, landing previews, and playheads.
 - `src/client/space.ts`: 2D mapping, inverse picking, and shared light/hit-target settling animation.
 - `src/client/playground.ts`: Light model, tone/material registry, magnetic placement transactions, collision validation, and event compilation.
 - `src/client/score.ts`: Voice definitions, ranges, polyphony, seed onsets, and the note-event type.
 - `src/client/sequencer.ts`, `voices.ts`: Audio-clock scheduler and synthesized voices.
-- `test/`: Spatial round-trip and musical behavior tests, scheduler tests with a controlled clock, and the Worker smoke test. Evaluate actual sound in a Web Audio-capable browser.
+- `test/`: React gesture/history interaction tests in Happy DOM, spatial round-trip and musical behavior tests, scheduler tests with a controlled clock, and the Worker smoke test. Evaluate actual sound in a Web Audio-capable browser.
 - `src/server/`: Worker entry point, `/api/health`, and the empty `Room` class.
 - `vite.config.ts`, `wrangler.jsonc`: Local development and Worker configuration.
 

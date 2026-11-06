@@ -19,15 +19,21 @@ type Props = {
   playing: boolean;
   feedback: CollisionFeedback | null;
   onSelect: (id: number | null) => void;
-  onPlace: (source: Source, remember?: boolean) => Placement;
-  onEdit: (change: (document: Constellation) => Constellation, remember?: boolean) => Constellation;
-  onCommit: (before: Constellation) => void;
+  onPlace: (source: Source) => Placement;
+  onEdit: (change: (document: Constellation) => Constellation) => Constellation;
+  onBegin: (cancel: () => void) => GestureEdit;
   nextId: () => number;
   getProgress: () => number | null;
   onPlayback: () => void;
   renderSelection: (source: Source, focusSurface: () => void) => ReactNode;
 };
+type GestureEdit = {
+  place: (source: Source) => Placement | null;
+  commit: () => void;
+  cancel: () => void;
+};
 type Gesture = {
+  edit: GestureEdit;
   pointer: number;
   before: Constellation;
   grab: { x: number; y: number };
@@ -76,9 +82,12 @@ export function PointSpace(props: Props) {
   useEffect(() => {
     const keyDown = () => setKeyboard(true);
     const pointerDown = () => setKeyboard(false);
+    const blur = () => gesture.current?.edit.cancel();
+    window.addEventListener("blur", blur);
     window.addEventListener("keydown", keyDown, true);
     window.addEventListener("pointerdown", pointerDown, true);
     return () => {
+      window.removeEventListener("blur", blur);
       window.removeEventListener("keydown", keyDown, true);
       window.removeEventListener("pointerdown", pointerDown, true);
     };
@@ -151,16 +160,33 @@ export function PointSpace(props: Props) {
   function newSource(x: number, y: number): Source {
     return { id: props.nextId(), ...pick(x, y, size) };
   }
-  function add(x: number, y: number, remember: boolean) {
+  function add(x: number, y: number) {
     const source = newSource(x, y);
-    const result = props.onPlace(source, remember);
-    if (remember && result.accepted) settle(source, result.source);
+    const result = props.onPlace(source);
+    if (result.accepted) settle(source, result.source);
+  }
+  function releasePointer(pointer: number) {
+    if (surface.current?.hasPointerCapture(pointer)) surface.current.releasePointerCapture(pointer);
+  }
+  function cancelPreview() {
+    const active = gesture.current;
+    gesture.current = null;
+    setDragging(false);
+    if (draftRef.current) {
+      settle(
+        draftRef.current,
+        active?.before.sources.find(({ id }) => id === draftRef.current?.id),
+      );
+    }
+    updateDraft(null);
+    if (active) releasePointer(active.pointer);
   }
   function remove(id: number) {
-    props.onEdit((document) => ({
-      ...document,
-      sources: document.sources.filter((source) => source.id !== id),
-    }));
+    props.onEdit((document) =>
+      document.sources.some((source) => source.id === id)
+        ? { ...document, sources: document.sources.filter((source) => source.id !== id) }
+        : document,
+    );
     props.onSelect(null);
     surface.current?.focus();
   }
@@ -185,6 +211,7 @@ export function PointSpace(props: Props) {
     event.preventDefault();
     const paint = event.shiftKey && id === null;
     gesture.current = {
+      edit: props.onBegin(cancelPreview),
       pointer: event.pointerId,
       before: props.document,
       grab: { x: position.x - center.x, y: position.y - center.y },
@@ -196,7 +223,8 @@ export function PointSpace(props: Props) {
     event.currentTarget.setPointerCapture(event.pointerId);
     setDragging(true);
     if (paint) {
-      add(position.x, position.y, false);
+      surface.current?.focus();
+      gesture.current.edit.place(newSource(position.x, position.y));
       return;
     }
     let initial = source ?? newSource(position.x, position.y);
@@ -218,7 +246,7 @@ export function PointSpace(props: Props) {
     const position = coordinates(event);
     if (active.paint) {
       if (Math.hypot(position.x - active.last.x, position.y - active.last.y) > 24) {
-        add(position.x, position.y, false);
+        active.edit.place(newSource(position.x, position.y));
         active.last = position;
       }
     } else if (draftRef.current) {
@@ -233,24 +261,27 @@ export function PointSpace(props: Props) {
   function finish(event: PointerEvent<HTMLDivElement>) {
     const active = gesture.current;
     if (!active || active.pointer !== event.pointerId) return;
+    if (event.type !== "pointerup") {
+      active.edit.cancel();
+      return;
+    }
     gesture.current = null;
     setDragging(false);
-    if (active.paint) props.onCommit(active.before);
-    else if (draftRef.current) {
+    if (draftRef.current) {
       const source = draftRef.current;
       const previous = active.before.sources.find(({ id }) => id === source.id);
-      if (event.type === "pointerup") {
-        if (previous && !active.moved) {
-          settle(source, previous);
-          props.onSelect(active.deselect ? null : previous.id);
-          if (active.deselect) surface.current?.focus();
-        } else {
-          const result = props.onPlace(source);
-          settle(source, result.accepted ? result.source : previous);
-        }
-      } else settle(source, previous);
+      if (previous && !active.moved) {
+        settle(source, previous);
+        props.onSelect(active.deselect ? null : previous.id);
+        if (active.deselect) surface.current?.focus();
+      } else {
+        const result = active.edit.place(source);
+        settle(source, result?.accepted ? result.source : previous);
+      }
       updateDraft(null);
     }
+    active.edit.commit();
+    releasePointer(active.pointer);
   }
   function keyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.ctrlKey || event.metaKey || event.altKey) return;
@@ -260,7 +291,10 @@ export function PointSpace(props: Props) {
       ArrowUp: [0, 1],
       ArrowDown: [0, -1],
     };
-    const source = props.document.sources.find((item) => item.id === props.selected);
+    const document = gesture.current?.before ?? props.document;
+    if (moves[event.key] || ["Enter", "Escape", "Delete", "Backspace"].includes(event.key))
+      gesture.current?.edit.cancel();
+    const source = document.sources.find((item) => item.id === props.selected);
     if (event.key === " ") {
       event.preventDefault();
       props.onPlayback();
@@ -269,17 +303,17 @@ export function PointSpace(props: Props) {
       surface.current?.focus();
     } else if (event.key === "Enter") {
       event.preventDefault();
-      add(size.width * 0.5, size.height * 0.5, true);
+      add(size.width * 0.5, size.height * 0.5);
     } else if (moves[event.key]) {
       event.preventDefault();
       if (!source) {
-        props.onSelect(props.document.sources[0]?.id ?? null);
+        props.onSelect(document.sources[0]?.id ?? null);
         return;
       }
       props.onPlace(moveSource(source, ...moves[event.key]));
-    } else if (source && (event.key === "Delete" || event.key === "Backspace")) {
+    } else if (event.key === "Delete" || event.key === "Backspace") {
       event.preventDefault();
-      remove(source.id);
+      if (source) remove(source.id);
     }
   }
 
@@ -334,7 +368,8 @@ export function PointSpace(props: Props) {
           move it one timing step or pitch. Select a light to duplicate or remove it using the
           buttons beside it. Keyboard focus uses a small frame. Delete removes; Escape deselects;
           Space plays or pauses. Tab leaves the surface and its selected controls. Undo restores the
-          previous gesture.
+          previous gesture, or cancels the current gesture before it is released. Escape also
+          cancels an unfinished gesture.
         </p>
       </div>
       {selected && !dragging && (
