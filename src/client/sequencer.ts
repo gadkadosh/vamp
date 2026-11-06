@@ -55,7 +55,7 @@ export class Sequencer {
     const elapsed = time - this.startTime;
     const onsets = new Map<number, NoteOnset>();
     for (const onset of this.onsets) {
-      if (onset.time <= time) onsets.set(onset.note.sourceId, onset);
+      if (onset.time <= time) onsets.set(onset.note.noteId, onset);
     }
     return {
       time,

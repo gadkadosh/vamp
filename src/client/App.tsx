@@ -2,18 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PointSpace } from "./PointSpace";
 import {
   compose,
-  createConstellation,
+  createPattern,
   MATERIALS,
-  placeSource,
-  sourceLabel,
+  placeNote,
+  noteLabel,
   toneFor,
   wrapStep,
 } from "./playground";
-import type { CollisionFeedback, Constellation, Placement, Source } from "./playground";
+import type { CollisionFeedback, Pattern, Placement, Note } from "./playground";
 import { Sequencer } from "./sequencer";
 import { EMPTY_PLAYBACK } from "./score";
 
-type History = { present: Constellation; past: Constellation[]; future: Constellation[] };
+type History = { present: Pattern; past: Pattern[]; future: Pattern[] };
 type IconName =
   | "play"
   | "pause"
@@ -71,7 +71,7 @@ function Icon({ name }: { name: IconName }) {
 
 export function App() {
   const [history, setHistory] = useState<History>(() => ({
-    present: createConstellation(),
+    present: createPattern(),
     past: [],
     future: [],
   }));
@@ -80,14 +80,14 @@ export function App() {
     null,
   );
   const [gesturing, setGesturing] = useState(false);
-  const constellation = history.present;
-  const score = useMemo(() => compose(constellation), [constellation]);
+  const pattern = history.present;
+  const score = useMemo(() => compose(pattern), [pattern]);
   const scoreRef = useRef(score);
   const engine = useRef<Sequencer | null>(null);
   const getPlayback = useCallback(() => engine.current?.getPlayback() ?? EMPTY_PLAYBACK, []);
   const [selectedId, setSelected] = useState<number | null>(null);
-  const selected = constellation.sources.find((source) => source.id === selectedId);
-  const nextSource = useRef(Math.max(...constellation.sources.map((source) => source.id), 0) + 1);
+  const selected = pattern.notes.find((note) => note.id === selectedId);
+  const nextNote = useRef(Math.max(...pattern.notes.map((note) => note.id), 0) + 1);
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -161,7 +161,7 @@ export function App() {
     gesture.current = active;
     setGesturing(true);
     return {
-      place: (source: Source) => (gesture.current === active ? place(source, true) : null),
+      place: (note: Note) => (gesture.current === active ? place(note, true) : null),
       commit: () => {
         if (gesture.current !== active) return;
         gesture.current = null;
@@ -180,7 +180,7 @@ export function App() {
       },
     };
   }
-  function edit(change: (document: Constellation) => Constellation) {
+  function edit(change: (document: Pattern) => Pattern) {
     cancelGesture();
     const previous = historyRef.current;
     const next = change(previous.present);
@@ -192,15 +192,15 @@ export function App() {
     });
     return next;
   }
-  function place(candidate: Source, preview = false): Placement {
+  function place(candidate: Note, preview = false): Placement {
     if (!preview) cancelGesture();
     const current = historyRef.current.present;
-    const result = placeSource(current, candidate);
+    const result = placeNote(current, candidate);
     if (result.accepted) {
       if (preview) apply({ ...historyRef.current, present: result.document });
       else edit(() => result.document);
       setFeedback(null);
-      setSelected(result.source.id);
+      setSelected(result.note.id);
       if (result.document !== current) setMessage("A note, settled into the phrase.");
     } else {
       setFeedback({ collisions: result.collisions, started: performance.now() });
@@ -209,8 +209,8 @@ export function App() {
           ? "That bass beat is occupied. Try another landing."
           : "That sound is already here. Try another pitch or beat.",
       );
-      if (!current.sources.some(({ id }) => id === candidate.id))
-        setSelected(result.collisions[0].sourceId);
+      if (!current.notes.some(({ id }) => id === candidate.id))
+        setSelected(result.collisions[0].noteId);
     }
     return result;
   }
@@ -313,11 +313,11 @@ export function App() {
             </button>
             {menu && (
               <div className="popover sketch-menu" id="sketch-menu">
-                <p className="menu-caption">{constellation.sources.length} lights in this loop</p>
+                <p className="menu-caption">{pattern.notes.length} lights in this loop</p>
                 <button
-                  disabled={!constellation.sources.length}
+                  disabled={!pattern.notes.length}
                   onClick={() => {
-                    edit((previous) => ({ ...previous, sources: [] }));
+                    edit((previous) => ({ ...previous, notes: [] }));
                     setSelected(null);
                     setFeedback(null);
                     setMessage("An empty space. Tap anywhere to begin.");
@@ -329,7 +329,7 @@ export function App() {
                 </button>
                 <button
                   onClick={() => {
-                    edit(() => createConstellation());
+                    edit(() => createPattern());
                     setSelected(null);
                     setFeedback(null);
                     setMessage("Back to the starting phrase.");
@@ -358,7 +358,7 @@ export function App() {
 
       <section className="surface" aria-label="Your musical sketch">
         <PointSpace
-          document={constellation}
+          document={pattern}
           selected={selected?.id ?? null}
           playing={playing}
           feedback={feedback}
@@ -366,29 +366,26 @@ export function App() {
           onPlace={place}
           onEdit={edit}
           onBegin={beginGesture}
-          nextId={() => nextSource.current++}
+          nextId={() => nextNote.current++}
           getPlayback={getPlayback}
           onPlayback={() => void togglePlayback()}
-          renderSelection={(source, focusSurface) => (
+          renderSelection={(note, focusSurface) => (
             <>
               <span
                 className="selected-swatch"
-                style={{ background: toneFor(source).color, color: toneFor(source).color }}
+                style={{ background: toneFor(note).color, color: toneFor(note).color }}
                 aria-hidden="true"
               />
-              <span className="selected-pitch">{toneFor(source).note.name}</span>
+              <span className="selected-pitch">{toneFor(note).note.name}</span>
               <span className="selected-material">
-                {
-                  MATERIALS.find(({ instrument }) => instrument === toneFor(source).instrument)
-                    ?.name
-                }
+                {MATERIALS.find(({ instrument }) => instrument === toneFor(note).instrument)?.name}
               </span>
               <button
                 className="icon-button"
                 title="Duplicate, one beat later"
                 aria-label="Duplicate selected note"
                 onClick={() => {
-                  place({ ...source, id: nextSource.current++, step: wrapStep(source.step + 4) });
+                  place({ ...note, id: nextNote.current++, step: wrapStep(note.step + 4) });
                 }}
               >
                 <Icon name="duplicate" />
@@ -400,7 +397,7 @@ export function App() {
                 onClick={() => {
                   edit((previous) => ({
                     ...previous,
-                    sources: previous.sources.filter(({ id }) => id !== source.id),
+                    notes: previous.notes.filter(({ id }) => id !== note.id),
                   }));
                   setSelected(null);
                   setMessage("Note removed.");
@@ -412,7 +409,7 @@ export function App() {
             </>
           )}
         />
-        {!constellation.sources.length && (
+        {!pattern.notes.length && (
           <div className="empty-invitation" aria-hidden="true">
             <span className="empty-light" />
             <p>Leave the first light.</p>
@@ -450,7 +447,7 @@ export function App() {
         </p>
       </footer>
       <p className="sr-only" aria-live="polite">
-        {selected ? sourceLabel(selected) : "No note selected."}
+        {selected ? noteLabel(selected) : "No note selected."}
       </p>
 
       <dialog

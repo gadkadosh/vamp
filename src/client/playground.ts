@@ -28,30 +28,29 @@ export const TONES = MATERIALS.flatMap((material) => {
   }));
 });
 // Drafts move continuously; committed lights land on rhythmic and pitched positions.
-export type Source = { id: number; step: number; tone: number };
-export type Constellation = { sources: Source[] };
-export type Collision = { sourceId: number; step: number };
+export type Note = { id: number; step: number; tone: number };
+export type Pattern = { notes: Note[] };
+export type Collision = { noteId: number; step: number };
 export type CollisionFeedback = { collisions: Collision[]; started: number };
 export type Placement = {
-  document: Constellation;
-  source: Source;
+  document: Pattern;
+  note: Note;
   collisions: Collision[];
   accepted: boolean;
 };
 export const clamp = (value: number, min = 0, max = 1) => Math.max(min, Math.min(max, value));
 export const wrapStep = (step: number) => ((step % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
-export const toneFor = (source: Source) =>
-  TONES[clamp(Math.round(source.tone), 0, TONES.length - 1)];
+export const toneFor = (note: Note) => TONES[clamp(Math.round(note.tone), 0, TONES.length - 1)];
 export const soundingStep = (step: number) => wrapStep(Math.round(step));
-export const snapSource = (source: Source): Source => ({
-  ...source,
-  step: soundingStep(source.step),
-  tone: clamp(Math.round(source.tone), 0, TONES.length - 1),
+export const snapNote = (note: Note): Note => ({
+  ...note,
+  step: soundingStep(note.step),
+  tone: clamp(Math.round(note.tone), 0, TONES.length - 1),
 });
 
-export function createConstellation(): Constellation {
+export function createPattern(): Pattern {
   let id = 0;
-  const sources: Source[] = [];
+  const notes: Note[] = [];
   for (const instrument of INSTRUMENTS) {
     for (const [name, step] of instrument.seed) {
       const frequency = instrument.notes.find((note) => note.name === name)!.frequency;
@@ -61,60 +60,60 @@ export function createConstellation(): Constellation {
       const closest = candidates.reduce((a, b) =>
         Math.abs(a.note.frequency - frequency) <= Math.abs(b.note.frequency - frequency) ? a : b,
       );
-      sources.push({ id: ++id, step, tone: closest.index });
+      notes.push({ id: ++id, step, tone: closest.index });
     }
   }
-  return { sources };
+  return { notes };
 }
 
-export function findCollisions(document: Constellation, candidate: Source): Collision[] {
+export function findCollisions(document: Pattern, candidate: Note): Collision[] {
   const tone = toneFor(candidate);
   const step = soundingStep(candidate.step);
-  return document.sources.flatMap((other) => {
+  return document.notes.flatMap((other) => {
     if (other.id === candidate.id) return [];
     const otherTone = toneFor(other);
     if (otherTone.instrument !== tone.instrument) return [];
     if (tone.polyphonic && otherTone.row !== tone.row) return [];
-    return soundingStep(other.step) === step ? [{ sourceId: other.id, step }] : [];
+    return soundingStep(other.step) === step ? [{ noteId: other.id, step }] : [];
   });
 }
 
-// Every source-editing action uses this transaction: never leave a silent light behind.
-export function placeSource(document: Constellation, candidate: Source): Placement {
-  const source = snapSource(candidate);
-  const collisions = findCollisions(document, source);
-  if (collisions.length) return { document, source, collisions, accepted: false };
-  const previous = document.sources.find((item) => item.id === source.id);
-  if (previous && previous.step === source.step && previous.tone === source.tone) {
-    return { document, source: previous, collisions: [], accepted: true };
+// Every note-editing action uses this transaction: never leave a silent light behind.
+export function placeNote(document: Pattern, candidate: Note): Placement {
+  const note = snapNote(candidate);
+  const collisions = findCollisions(document, note);
+  if (collisions.length) return { document, note, collisions, accepted: false };
+  const previous = document.notes.find((item) => item.id === note.id);
+  if (previous && previous.step === note.step && previous.tone === note.tone) {
+    return { document, note: previous, collisions: [], accepted: true };
   }
-  const sources = previous
-    ? document.sources.map((item) => (item.id === source.id ? source : item))
-    : [...document.sources, source];
-  return { document: { ...document, sources }, source, collisions: [], accepted: true };
+  const notes = previous
+    ? document.notes.map((item) => (item.id === note.id ? note : item))
+    : [...document.notes, note];
+  return { document: { ...document, notes }, note, collisions: [], accepted: true };
 }
 
-export function compose(document: Constellation): TimedNote[] {
+export function compose(document: Pattern): TimedNote[] {
   // Placement has already resolved conflicts. Compilation never drops a visible light.
-  return document.sources
-    .map((source) => ({
-      sourceId: source.id,
-      instrument: toneFor(source).instrument,
-      row: toneFor(source).row,
-      step: soundingStep(source.step),
+  return document.notes
+    .map((note) => ({
+      noteId: note.id,
+      instrument: toneFor(note).instrument,
+      row: toneFor(note).row,
+      step: soundingStep(note.step),
     }))
     .sort((a, b) => a.step - b.step);
 }
 
-export function moveSource(source: Source, stepDelta: number, toneDelta: number): Source {
+export function moveNote(note: Note, stepDelta: number, toneDelta: number): Note {
   return {
-    ...source,
-    step: wrapStep(source.step + stepDelta),
-    tone: clamp(source.tone + toneDelta, 0, TONES.length - 1),
+    ...note,
+    step: wrapStep(note.step + stepDelta),
+    tone: clamp(note.tone + toneDelta, 0, TONES.length - 1),
   };
 }
 
-export function sourceLabel(source: Source): string {
-  const instrument = INSTRUMENTS.find(({ id }) => id === toneFor(source).instrument)!;
-  return `Note ${source.id}: ${instrument.name}, ${toneFor(source).note.name}, beat position ${soundingStep(source.step) + 1} of ${STEP_COUNT}`;
+export function noteLabel(note: Note): string {
+  const instrument = INSTRUMENTS.find(({ id }) => id === toneFor(note).instrument)!;
+  return `Note ${note.id}: ${instrument.name}, ${toneFor(note).note.name}, beat position ${soundingStep(note.step) + 1} of ${STEP_COUNT}`;
 }
