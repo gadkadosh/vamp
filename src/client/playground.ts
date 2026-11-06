@@ -28,10 +28,7 @@ export const TONES = MATERIALS.flatMap((material) => {
   }));
 });
 // Drafts move continuously; committed lights land on rhythmic and pitched positions.
-export type Source = { id: number; step: number; tone: number; energy?: number };
-export const energyFor = (source: Source) => clamp(source.energy ?? 0.5);
-// Neutral intensity preserves the original loudness.
-export const gainForEnergy = (energy: number) => 0.18 + clamp(energy) * 1.64;
+export type Source = { id: number; step: number; tone: number };
 export type Constellation = { sources: Source[] };
 export type SpatialNote = TimedNote & { sourceId: number };
 export type Collision = { sourceId: number; step: number };
@@ -51,7 +48,6 @@ export const snapSource = (source: Source): Source => ({
   ...source,
   step: soundingStep(source.step),
   tone: clamp(Math.round(source.tone), 0, TONES.length - 1),
-  ...(source.energy === undefined ? {} : { energy: clamp(source.energy) }),
 });
 
 export function createConstellation(): Constellation {
@@ -90,12 +86,7 @@ export function placeSource(document: Constellation, candidate: Source): Placeme
   const collisions = findCollisions(document, source);
   if (collisions.length) return { document, source, collisions, accepted: false };
   const previous = document.sources.find((item) => item.id === source.id);
-  if (
-    previous &&
-    previous.step === source.step &&
-    previous.tone === source.tone &&
-    energyFor(previous) === energyFor(source)
-  ) {
+  if (previous && previous.step === source.step && previous.tone === source.tone) {
     return { document, source: previous, collisions: [], accepted: true };
   }
   const sources = previous
@@ -112,7 +103,6 @@ export function compose(document: Constellation): SpatialNote[] {
       instrument: toneFor(source).instrument,
       row: toneFor(source).row,
       step: soundingStep(source.step),
-      ...(source.energy === undefined ? {} : { gain: gainForEnergy(source.energy) }),
     }))
     .sort((a, b) => a.step - b.step);
 }
@@ -127,5 +117,5 @@ export function moveSource(source: Source, stepDelta: number, toneDelta: number)
 
 export function sourceLabel(source: Source): string {
   const instrument = INSTRUMENTS.find(({ id }) => id === toneFor(source).instrument)!;
-  return `Note ${source.id}: ${instrument.name}, ${toneFor(source).note.name}, beat position ${soundingStep(source.step) + 1} of ${STEP_COUNT}${source.energy === undefined ? "" : `, intensity ${Math.round(energyFor(source) * 100)} percent`}`;
+  return `Note ${source.id}: ${instrument.name}, ${toneFor(source).note.name}, beat position ${soundingStep(source.step) + 1} of ${STEP_COUNT}`;
 }

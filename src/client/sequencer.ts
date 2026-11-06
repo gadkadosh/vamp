@@ -97,16 +97,15 @@ export class Sequencer {
     for (const { note, time } of starts) {
       const instrument = INSTRUMENTS.find(({ id }) => id === note.instrument)!;
       const channel = this.channels.get(instrument.id)!;
-      if (!instrument.polyphonic) this.monoVoices.get(instrument.id)?.(time);
+      this.monoVoices.get(instrument.id)?.(time);
       const stop = instrument.start(
         this.context,
         channel,
         instrument.notes[note.row].frequency,
         time,
-        note.gain,
       );
-      // Polyphonic notes finish naturally; only bass needs damping at the next onset.
-      if (!instrument.polyphonic) this.monoVoices.set(instrument.id, stop);
+      // Only bass returns a damper; polyphonic voices finish naturally.
+      if (stop) this.monoVoices.set(instrument.id, stop);
     }
     // A rolling, half-open audio-time window prevents duplicate strikes, handles
     // fractional onsets, and skips missed events after a background-tab stall.

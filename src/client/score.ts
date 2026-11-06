@@ -87,5 +87,4 @@ export type TimedNote = {
   instrument: InstrumentId;
   row: number;
   step: number;
-  gain?: number;
 };

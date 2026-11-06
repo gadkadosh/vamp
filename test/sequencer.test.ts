@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import { DEFAULT_VOLUME, INSTRUMENTS, STEP_COUNT, STEP_SECONDS } from "../src/client/score";
 import type { InstrumentId, TimedNote } from "../src/client/score";
-import { compose, gainForEnergy } from "../src/client/playground";
+import { compose } from "../src/client/playground";
 import type { Constellation } from "../src/client/playground";
 import { Sequencer } from "../src/client/sequencer";
 import { carriers, channel, plucks, routesTo, TestAudioContext } from "./audio-context";
@@ -60,71 +60,38 @@ const floatingLight: Constellation = {
 };
 
 test.each([
-  ["bass", 2, 2.8, 1],
-  ["mallet", 7, 0.9, 1],
-  ["keys", 11, 2.43, 4],
-  ["glass", 17, 2.83, 3],
+  ["bass", 2, 2.8, [0.13]],
+  ["mallet", 7, 0.9, [0.12]],
+  ["keys", 11, 2.43, [0.065, 0.014, 0.0045, 0.0015]],
+  ["glass", 17, 2.83, [0.035, 0.008, 0.002]],
 ] as const)(
-  "%s rings to its natural end without a fixed note-length cutoff",
-  async (id, tone, seconds, count) => {
+  "%s retains its envelope peaks, onset, and natural decay",
+  async (id, tone, seconds, peaks) => {
     const { context } = await start(() => compose({ sources: [{ id: 1, step: 0, tone }] }));
     runUntil(context, 3.2);
     const voices = sources(context, id);
-    expect(voices).toHaveLength(count);
+    expect(voices).toHaveLength(peaks.length);
     for (const source of voices) {
       expect(source.start).toHaveBeenCalledExactlyOnceWith(0.05);
       expect(source.stop).toHaveBeenCalledTimes(1);
     }
     expect(voices[0].stop.mock.calls[0][0]).toBeCloseTo(0.05 + seconds, 10);
+    expect(
+      context.gains
+        .filter((gain) => routesTo(gain, channel(context, id)))
+        .flatMap((gain) => gain.gain.linearRampToValueAtTime.mock.calls)
+        .filter(([value]) => value > 0)
+        .map(([value]) => value),
+    ).toEqual(peaks);
   },
 );
 
-test.each([
-  ["bass", 2],
-  ["mallet", 7],
-  ["keys", 11],
-  ["glass", 17],
-] as const)(
-  "per-note intensity reaches the actual %s envelope without moving its onset",
-  async (id, tone) => {
-    const notes = compose({
-      sources: [
-        { id: 1, step: 0, tone, energy: 0.1 },
-        { id: 2, step: 4, tone, energy: 0.95 },
-      ],
-    });
-    const { context } = await start(() => notes);
-    runUntil(context, 0.9);
-    const envelopes = context.gains.filter((gain) => routesTo(gain, channel(context, id)));
-    const peakAt = (onset: number) =>
-      Math.max(
-        ...envelopes
-          .flatMap((node) => node.gain.linearRampToValueAtTime.mock.calls)
-          .filter(([value, time]) => value > 0 && time > onset && time < onset + 0.03)
-          .map(([value]) => value),
-      );
-    const soft = peakAt(0.05),
-      loud = peakAt(0.05 + 4 * STEP_SECONDS);
-    expect(soft).toBeGreaterThan(0);
-    expect(loud / soft).toBeCloseTo(gainForEnergy(0.95) / gainForEnergy(0.1), 10);
-    const starts = sources(context, id).map((source) => source.start.mock.calls[0][0]);
-    expect(starts).toContain(0.05);
-    expect(starts).toContain(0.05 + 4 * STEP_SECONDS);
-  },
-);
-
-test("melodic lights use the unchanged felt timbre at neutral intensity", async () => {
+test("felt lights retain their partial tuning", async () => {
   const { context } = await start(() => compose({ sources: [{ id: 1, step: 0, tone: 11 }] }));
   const frequency = instrument("keys").notes[row("keys", "A4")].frequency;
   expect(carriers(context, "keys").map((source) => source.frequency.value)).toEqual(
     [1, 2.003, 3.009, 4.02].map((ratio) => frequency * ratio),
   );
-  const peaks = context.gains
-    .filter((gain) => routesTo(gain, channel(context, "keys")))
-    .flatMap((gain) => gain.gain.linearRampToValueAtTime.mock.calls)
-    .filter(([value]) => value > 0)
-    .map(([value]) => value);
-  expect(peaks).toEqual([0.065, 0.014, 0.0045, 0.0015]);
   expect(plucks(context, "keys")).toEqual([]);
 });
 
@@ -216,31 +183,45 @@ test("bass damps only on the next bass onset, including across the loop seam", a
   expect(strings[1].stop.mock.calls.at(-1)![0]).toBeCloseTo(0.05 + STEP_COUNT * STEP_SECONDS, 10);
   expect(strings[2].stop).toHaveBeenCalledExactlyOnceWith(0.05 + STEP_COUNT * STEP_SECONDS + 2.8);
   const gates = context.gains.filter((gain) => gain.connections.includes(channel(context, "bass")));
+  expect(gates[0].gain.setValueAtTime).not.toHaveBeenCalled();
+  expect(gates[0].gain.linearRampToValueAtTime).not.toHaveBeenCalled();
+  expect(gates[1].gain.setValueAtTime).toHaveBeenCalledWith(
+    1,
+    0.05 + STEP_COUNT * STEP_SECONDS - 0.008,
+  );
   expect(gates[1].gain.linearRampToValueAtTime).toHaveBeenCalledWith(
     0,
     0.05 + STEP_COUNT * STEP_SECONDS,
   );
 });
 
-test("felt chords decay independently when simultaneous and later notes overlap", async () => {
-  const notes: TimedNote[] = [
-    { instrument: "keys", row: 0, step: 0 },
-    { instrument: "keys", row: 1, step: 0 },
-    { instrument: "keys", row: 2, step: 1 },
-  ];
-  const { context } = await start(() => notes);
-  runUntil(context, 0.3);
-  const fundamentals = carriers(context, "keys").filter((_, index) => index % 4 === 0);
-  expect(fundamentals).toHaveLength(3);
-  expect(fundamentals[0].start).toHaveBeenCalledWith(0.05);
-  expect(fundamentals[1].start).toHaveBeenCalledWith(0.05);
-  expect(fundamentals[2].start.mock.calls[0][0]).toBeCloseTo(0.05 + STEP_SECONDS, 10);
-  runUntil(context, 3);
-  for (const source of fundamentals) {
-    expect(source.stop).toHaveBeenCalledTimes(1);
-    expect(source.stop.mock.calls[0][0] - source.start.mock.calls[0][0]).toBeCloseTo(2.43, 10);
-  }
-});
+test.each([
+  ["mallet", 1, 0.9],
+  ["keys", 4, 2.43],
+  ["glass", 3, 2.83],
+] as const)(
+  "%s chords decay independently when simultaneous and later notes overlap",
+  async (id, partials, seconds) => {
+    const notes: TimedNote[] = [
+      { instrument: id, row: 0, step: 0 },
+      { instrument: id, row: 1, step: 0 },
+      { instrument: id, row: 2, step: 1 },
+    ];
+    const { context } = await start(() => notes);
+    runUntil(context, 0.3);
+    const voices = carriers(context, id);
+    expect(voices).toHaveLength(3 * partials);
+    const fundamentals = voices.filter((_, index) => index % partials === 0);
+    expect(fundamentals[0].start).toHaveBeenCalledExactlyOnceWith(0.05);
+    expect(fundamentals[1].start).toHaveBeenCalledExactlyOnceWith(0.05);
+    expect(fundamentals[2].start.mock.calls[0][0]).toBeCloseTo(0.05 + STEP_SECONDS, 10);
+    runUntil(context, 3);
+    for (const source of voices) expect(source.stop).toHaveBeenCalledTimes(1);
+    for (const source of fundamentals) {
+      expect(source.stop.mock.calls[0][0] - source.start.mock.calls[0][0]).toBeCloseTo(seconds, 10);
+    }
+  },
+);
 
 test("the spatial playhead reads the audio clock, wraps the loop, and holds while paused", async () => {
   const { engine, context } = await start();

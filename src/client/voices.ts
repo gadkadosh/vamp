@@ -3,38 +3,21 @@ export function scheduleMallet(
   output: AudioNode,
   frequency: number,
   time: number,
-  gain = 1,
 ) {
   const oscillator = context.createOscillator();
   const envelope = context.createGain();
-  const gate = context.createGain();
   oscillator.type = "sine";
   oscillator.frequency.value = frequency;
   envelope.gain.setValueAtTime(0, time);
-  envelope.gain.linearRampToValueAtTime(0.12 * gain, time + 0.02);
+  envelope.gain.linearRampToValueAtTime(0.12, time + 0.02);
   envelope.gain.exponentialRampToValueAtTime(0.0001, time + 0.85);
   envelope.gain.linearRampToValueAtTime(0, time + 0.9);
-  oscillator.connect(envelope).connect(gate).connect(output);
+  oscillator.connect(envelope).connect(output);
   oscillator.start(time);
   oscillator.stop(time + 0.9);
   oscillator.onended = () => {
     oscillator.disconnect();
     envelope.disconnect();
-    gate.disconnect();
-  };
-  return damper(gate, [{ source: oscillator, end: time + 0.9 }], time);
-}
-
-type TimedSource = { source: AudioScheduledSourceNode; end: number };
-
-// Damp a voice at its gate end (or the next bass onset). The short fade avoids clicks.
-function damper(gate: GainNode, sources: TimedSource[], start: number) {
-  const end = Math.max(...sources.map((item) => item.end));
-  return (time: number) => {
-    if (time >= end) return;
-    gate.gain.setValueAtTime(1, Math.max(start, time - 0.008));
-    gate.gain.linearRampToValueAtTime(0, time);
-    for (const item of sources) if (time < item.end) item.source.stop(time);
   };
 }
 
@@ -44,29 +27,23 @@ function ringPartials(
   frequency: number,
   time: number,
   partials: readonly (readonly [ratio: number, peak: number, duration: number])[],
-  gain: number,
 ) {
-  const gate = context.createGain();
-  gate.connect(output);
-  const sources = partials.map(([ratio, peak, duration], index) => {
+  for (const [ratio, peak, duration] of partials) {
     const oscillator = context.createOscillator();
     const envelope = context.createGain();
     oscillator.frequency.value = frequency * ratio;
     envelope.gain.setValueAtTime(0, time);
-    envelope.gain.linearRampToValueAtTime(peak * gain, time + 0.008);
+    envelope.gain.linearRampToValueAtTime(peak, time + 0.008);
     envelope.gain.exponentialRampToValueAtTime(0.0001, time + duration);
     envelope.gain.linearRampToValueAtTime(0, time + duration + 0.03);
-    oscillator.connect(envelope).connect(gate);
+    oscillator.connect(envelope).connect(output);
     oscillator.start(time);
     oscillator.stop(time + duration + 0.03);
     oscillator.onended = () => {
       oscillator.disconnect();
       envelope.disconnect();
-      if (index === 0) gate.disconnect(); // Fundamental is the longest-lived partial.
     };
-    return { source: oscillator, end: time + duration + 0.03 };
-  });
-  return damper(gate, sources, time);
+  }
 }
 
 export function startFeltKeys(
@@ -74,21 +51,13 @@ export function startFeltKeys(
   output: AudioNode,
   frequency: number,
   time: number,
-  gain = 1,
 ) {
-  return ringPartials(
-    context,
-    output,
-    frequency,
-    time,
-    [
-      [1, 0.065, 2.4],
-      [2.003, 0.014, 0.9],
-      [3.009, 0.0045, 0.5],
-      [4.02, 0.0015, 0.3],
-    ],
-    gain,
-  );
+  ringPartials(context, output, frequency, time, [
+    [1, 0.065, 2.4],
+    [2.003, 0.014, 0.9],
+    [3.009, 0.0045, 0.5],
+    [4.02, 0.0015, 0.3],
+  ]);
 }
 
 export function scheduleGlass(
@@ -96,21 +65,13 @@ export function scheduleGlass(
   output: AudioNode,
   frequency: number,
   time: number,
-  gain = 1,
 ) {
   // Inharmonic modes give these high accents a glass-like, rather than keyboard, color.
-  return ringPartials(
-    context,
-    output,
-    frequency,
-    time,
-    [
-      [1, 0.035, 2.8],
-      [2.76, 0.008, 0.9],
-      [5.4, 0.002, 0.3],
-    ],
-    gain,
-  );
+  ringPartials(context, output, frequency, time, [
+    [1, 0.035, 2.8],
+    [2.76, 0.008, 0.9],
+    [5.4, 0.002, 0.3],
+  ]);
 }
 
 const BASS = { seconds: 2.8, peak: 0.13, cutoff: 700, attack: 0.01 };
@@ -151,29 +112,34 @@ export function startBass(
   output: AudioNode,
   frequency: number,
   time: number,
-  gain = 1,
 ) {
-  const voice = BASS;
   const source = context.createBufferSource();
   const body = context.createBiquadFilter();
   const envelope = context.createGain();
   const gate = context.createGain();
+  const end = time + BASS.seconds;
   source.buffer = pluckedString(context, frequency);
   body.type = "lowpass";
-  body.frequency.value = voice.cutoff;
+  body.frequency.value = BASS.cutoff;
   body.Q.value = 0.5;
   envelope.gain.setValueAtTime(0, time);
-  envelope.gain.linearRampToValueAtTime(voice.peak * gain, time + voice.attack);
-  envelope.gain.setValueAtTime(voice.peak * gain, time + voice.seconds - 0.08);
-  envelope.gain.linearRampToValueAtTime(0, time + voice.seconds);
+  envelope.gain.linearRampToValueAtTime(BASS.peak, time + BASS.attack);
+  envelope.gain.setValueAtTime(BASS.peak, end - 0.08);
+  envelope.gain.linearRampToValueAtTime(0, end);
   source.connect(body).connect(envelope).connect(gate).connect(output);
   source.start(time);
-  source.stop(time + voice.seconds);
+  source.stop(end);
   source.onended = () => {
     source.disconnect();
     body.disconnect();
     envelope.disconnect();
     gate.disconnect();
   };
-  return damper(gate, [{ source, end: time + voice.seconds }], time);
+  // Fade out at the next bass onset without touching notes that have already ended.
+  return (next: number) => {
+    if (next >= end) return;
+    gate.gain.setValueAtTime(1, Math.max(time, next - 0.008));
+    gate.gain.linearRampToValueAtTime(0, next);
+    source.stop(next);
+  };
 }
