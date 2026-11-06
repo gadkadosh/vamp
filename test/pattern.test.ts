@@ -78,7 +78,7 @@ test("landing snaps both timing and pitch, wraps the loop seam, and is idempoten
   ]);
 });
 
-test("soft piano allows several different pitches at the same beat, all with audible events", () => {
+test("muted piano allows several different pitches at the same beat, all with audible events", () => {
   let document = add(documentOf(), { ...light, tone: 10 });
   document = add(document, { ...light, id: 2, tone: 11.2 });
   document = add(document, { ...light, id: 3, tone: 13 });

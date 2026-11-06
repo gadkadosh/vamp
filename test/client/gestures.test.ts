@@ -538,7 +538,7 @@ test("the selected note shows its colored pitch, instrument, and a working remov
   expectSelected(16);
   expect(element(".selected-pitch").textContent).toBe("E5");
   expect(element(".selected-pitch").style.color).toBe("#e99db3");
-  expect(element(".selected-material").textContent).toBe("Soft piano");
+  expect(element(".selected-material").textContent).toBe("Muted piano");
   click(button("Remove selected note"));
   expect(document.querySelector('[data-light="16"]')).toBeNull();
   expect(notes()).toEqual(before.filter((_, index) => index !== 15));
@@ -558,7 +558,7 @@ test("selected note details follow pitch and instrument changes", () => {
   click(button("Undo"));
   expect(element(".selected-pitch").textContent).toBe("E5");
   expect(element(".selected-pitch").style.color).toBe("#e99db3");
-  expect(element(".selected-material").textContent).toBe("Soft piano");
+  expect(element(".selected-material").textContent).toBe("Muted piano");
 });
 
 test("note navigation preserves the existing redo branch", () => {

@@ -539,7 +539,7 @@ export function App() {
             <dt>Let it ring</dt>
             <dd>
               Press Play. The lights bloom as their sounds unfold. Nothing changes unless you change
-              it. Higher notes change from bass through mallet and soft piano to glass.
+              it. Higher notes change from bass through mallet and muted piano to glass.
             </dd>
           </div>
           <div>
