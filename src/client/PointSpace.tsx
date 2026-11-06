@@ -3,34 +3,34 @@ import type { KeyboardEvent, PointerEvent, ReactNode } from "react";
 import { drawSpace, FEEDBACK_MS } from "./drawSpace";
 import type { Scene } from "./drawSpace";
 import type { Playback } from "./score";
-import { clamp, findCollisions, moveSource, sourceLabel } from "./playground";
-import type { CollisionFeedback, Constellation, Placement, Source } from "./playground";
-import { layoutSources, pick, SETTLE_MS } from "./space";
+import { clamp, findCollisions, moveNote, noteLabel } from "./pattern";
+import type { CollisionFeedback, Pattern, Placement, Note } from "./pattern";
+import { layoutNotes, pick, SETTLE_MS } from "./space";
 import type { SettlingMotion, Size } from "./space";
 
 type Props = {
-  document: Constellation;
+  document: Pattern;
   selected: number | null;
   playing: boolean;
   feedback: CollisionFeedback | null;
   onSelect: (id: number | null) => void;
-  onPlace: (source: Source) => Placement;
-  onEdit: (change: (document: Constellation) => Constellation) => Constellation;
+  onPlace: (note: Note) => Placement;
+  onEdit: (change: (document: Pattern) => Pattern) => Pattern;
   onBegin: (cancel: () => void) => GestureEdit;
   nextId: () => number;
   getPlayback: () => Playback;
   onPlayback: () => void;
-  renderSelection: (source: Source, focusSurface: () => void) => ReactNode;
+  renderSelection: (note: Note, focusSurface: () => void) => ReactNode;
 };
 type GestureEdit = {
-  place: (source: Source) => Placement | null;
+  place: (note: Note) => Placement | null;
   commit: () => void;
   cancel: () => void;
 };
 type Gesture = {
   edit: GestureEdit;
   pointer: number;
-  before: Constellation;
+  before: Pattern;
   grab: { x: number; y: number };
   last: { x: number; y: number };
   paint: boolean;
@@ -48,32 +48,32 @@ export function PointSpace(props: Props) {
   const [size, setSize] = useState<Size>({ width: 1, height: 1 });
   const gesture = useRef<Gesture | null>(null);
   const motion = useRef<SettlingMotion | null>(null);
-  const [draft, setDraft] = useState<Source | null>(null);
+  const [draft, setDraft] = useState<Note | null>(null);
   const draftRef = useRef(draft);
   const [dragging, setDragging] = useState(false);
   const [keyboard, setKeyboard] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(
     () => matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
-  const sources = draft
-    ? props.document.sources.some(({ id }) => id === draft.id)
-      ? props.document.sources.map((source) => (source.id === draft.id ? draft : source))
-      : [...props.document.sources, draft]
-    : props.document.sources;
+  const notes = draft
+    ? props.document.notes.some(({ id }) => id === draft.id)
+      ? props.document.notes.map((note) => (note.id === draft.id ? draft : note))
+      : [...props.document.notes, draft]
+    : props.document.notes;
   const scene: Scene = {
-    document: { ...props.document, sources },
+    document: { ...props.document, notes },
     selected: draft?.id ?? props.selected,
     playing: props.playing,
     feedback: props.feedback,
     reducedMotion,
     preview: draft
       ? {
-          source: draft,
+          note: draft,
           collisions: findCollisions(props.document, draft),
         }
       : null,
   };
-  const lights = layoutSources(sources, size, motion.current, performance.now());
+  const lights = layoutNotes(notes, size, motion.current, performance.now());
 
   useEffect(() => {
     const keyDown = () => setKeyboard(true);
@@ -149,22 +149,22 @@ export function PointSpace(props: Props) {
         settling &&
         (scene.reducedMotion ||
           now - settling.started >= SETTLE_MS ||
-          !sources.some(({ id }) => id === settling.to.id))
+          !notes.some(({ id }) => id === settling.to.id))
       )
         motion.current = null;
-      const points = layoutSources(sources, size, motion.current, now);
+      const points = layoutNotes(notes, size, motion.current, now);
       context.clearRect(0, -bounds.top, size.width, bounds.height);
       drawSpace(context, scene, size, props.getPlayback(), points, now);
       // React positions static lights. Only a settling light needs per-frame DOM updates.
       if (settling) {
-        const point = points.find(({ source }) => source.id === settling.to.id);
+        const point = points.find(({ note }) => note.id === settling.to.id);
         const target = elements.current.get(settling.to.id);
         if (point && target) {
           target.style.left = `${point.position.x}px`;
           target.style.top = `${point.position.y}px`;
         }
       }
-      const selectedPoint = points.find(({ source }) => source.id === scene.selected);
+      const selectedPoint = points.find(({ note }) => note.id === scene.selected);
       if (toolbar && toolbarSize && selectedPoint) {
         const { width, height } = toolbarSize;
         const position = selectedPoint.position;
@@ -202,7 +202,7 @@ export function PointSpace(props: Props) {
       observer?.disconnect();
     };
   }, [
-    sources,
+    notes,
     size,
     props.selected,
     props.playing,
@@ -213,11 +213,11 @@ export function PointSpace(props: Props) {
     dragging,
   ]);
 
-  function updateDraft(source: Source | null) {
-    draftRef.current = source;
-    setDraft(source);
+  function updateDraft(note: Note | null) {
+    draftRef.current = note;
+    setDraft(note);
   }
-  function settle(from: Source, to: Source | undefined) {
+  function settle(from: Note, to: Note | undefined) {
     motion.current =
       to && !reducedMotion && (from.step !== to.step || from.tone !== to.tone)
         ? { from, to, started: performance.now() }
@@ -227,13 +227,13 @@ export function PointSpace(props: Props) {
     const bounds = event.currentTarget.getBoundingClientRect();
     return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
   }
-  function newSource(x: number, y: number): Source {
+  function newNote(x: number, y: number): Note {
     return { id: props.nextId(), ...pick(x, y, size) };
   }
   function add(x: number, y: number) {
-    const source = newSource(x, y);
-    const result = props.onPlace(source);
-    if (result.accepted) settle(source, result.source);
+    const note = newNote(x, y);
+    const result = props.onPlace(note);
+    if (result.accepted) settle(note, result.note);
   }
   function releasePointer(pointer: number) {
     if (surface.current?.hasPointerCapture(pointer)) surface.current.releasePointerCapture(pointer);
@@ -245,7 +245,7 @@ export function PointSpace(props: Props) {
     if (draftRef.current) {
       settle(
         draftRef.current,
-        active?.before.sources.find(({ id }) => id === draftRef.current?.id),
+        active?.before.notes.find(({ id }) => id === draftRef.current?.id),
       );
     }
     updateDraft(null);
@@ -253,8 +253,8 @@ export function PointSpace(props: Props) {
   }
   function remove(id: number) {
     props.onEdit((document) =>
-      document.sources.some((source) => source.id === id)
-        ? { ...document, sources: document.sources.filter((source) => source.id !== id) }
+      document.notes.some((note) => note.id === id)
+        ? { ...document, notes: document.notes.filter((note) => note.id !== id) }
         : document,
     );
     props.onSelect(null);
@@ -264,7 +264,7 @@ export function PointSpace(props: Props) {
     if (gesture.current || (event.button !== 0 && event.button !== 2)) return;
     const position = coordinates(event);
     // Overlapping buttons receive events in DOM order, not by proximity to the visible lights.
-    const points = layoutSources(props.document.sources, size, motion.current, performance.now());
+    const points = layoutNotes(props.document.notes, size, motion.current, performance.now());
     let nearest: (typeof points)[number] | undefined;
     let distance = 18; // Match the 36px circular hit targets.
     for (const point of points) {
@@ -274,18 +274,18 @@ export function PointSpace(props: Props) {
         distance = gap;
       }
     }
-    const source = nearest?.source;
-    const target = source ? elements.current.get(source.id) : null;
+    const note = nearest?.note;
+    const target = note ? elements.current.get(note.id) : null;
     if (event.button === 2) {
-      if (source) {
+      if (note) {
         event.preventDefault();
-        remove(source.id);
+        remove(note.id);
       }
       return;
     }
     const center = nearest?.position ?? position;
     event.preventDefault();
-    const paint = event.shiftKey && !source;
+    const paint = event.shiftKey && !note;
     gesture.current = {
       edit: props.onBegin(cancelPreview),
       pointer: event.pointerId,
@@ -294,26 +294,26 @@ export function PointSpace(props: Props) {
       last: position,
       paint,
       moved: false,
-      deselect: source?.id === props.selected,
+      deselect: note?.id === props.selected,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
     setDragging(true);
     if (paint) {
       surface.current?.focus();
-      gesture.current.edit.place(newSource(position.x, position.y));
+      gesture.current.edit.place(newNote(position.x, position.y));
       return;
     }
-    let initial = source ?? newSource(position.x, position.y);
+    let initial = note ?? newNote(position.x, position.y);
     if (
-      source &&
-      motion.current?.to.id === source.id &&
+      note &&
+      motion.current?.to.id === note.id &&
       performance.now() - motion.current.started < SETTLE_MS
     )
-      initial = { ...source, ...pick(center.x, center.y, size) };
+      initial = { ...note, ...pick(center.x, center.y, size) };
     motion.current = null;
     updateDraft(initial);
-    props.onSelect(source?.id ?? null);
-    if (source) target?.focus();
+    props.onSelect(note?.id ?? null);
+    if (note) target?.focus();
     else surface.current?.focus();
   }
   function pointerMove(event: PointerEvent<HTMLDivElement>) {
@@ -322,7 +322,7 @@ export function PointSpace(props: Props) {
     const position = coordinates(event);
     if (active.paint) {
       if (Math.hypot(position.x - active.last.x, position.y - active.last.y) > 24) {
-        active.edit.place(newSource(position.x, position.y));
+        active.edit.place(newNote(position.x, position.y));
         active.last = position;
       }
     } else if (draftRef.current) {
@@ -344,15 +344,15 @@ export function PointSpace(props: Props) {
     gesture.current = null;
     setDragging(false);
     if (draftRef.current) {
-      const source = draftRef.current;
-      const previous = active.before.sources.find(({ id }) => id === source.id);
+      const note = draftRef.current;
+      const previous = active.before.notes.find(({ id }) => id === note.id);
       if (previous && !active.moved) {
-        settle(source, previous);
+        settle(note, previous);
         props.onSelect(active.deselect ? null : previous.id);
         if (active.deselect) surface.current?.focus();
       } else {
-        const result = active.edit.place(source);
-        settle(source, result?.accepted ? result.source : previous);
+        const result = active.edit.place(note);
+        settle(note, result?.accepted ? result.note : previous);
       }
       updateDraft(null);
     }
@@ -375,10 +375,10 @@ export function PointSpace(props: Props) {
       ["Enter", "Escape", "Delete", "Backspace"].includes(event.key)
     )
       gesture.current?.edit.cancel();
-    const source = document.sources.find((item) => item.id === props.selected);
+    const note = document.notes.find((item) => item.id === props.selected);
     if (direction) {
       event.preventDefault();
-      const ordered = [...document.sources].sort(
+      const ordered = [...document.notes].sort(
         (a, b) => a.step - b.step || a.tone - b.tone || a.id - b.id,
       );
       const index = ordered.findIndex(({ id }) => id === props.selected);
@@ -402,18 +402,18 @@ export function PointSpace(props: Props) {
       add(size.width * 0.5, size.height * 0.5);
     } else if (moves[event.key]) {
       event.preventDefault();
-      if (!source) {
-        props.onSelect(document.sources[0]?.id ?? null);
+      if (!note) {
+        props.onSelect(document.notes[0]?.id ?? null);
         return;
       }
-      props.onPlace(moveSource(source, ...moves[event.key]));
+      props.onPlace(moveNote(note, ...moves[event.key]));
     } else if (event.key === "Delete" || event.key === "Backspace") {
       event.preventDefault();
-      if (source) remove(source.id);
+      if (note) remove(note.id);
     }
   }
 
-  const selected = props.document.sources.find(({ id }) => id === props.selected);
+  const selected = props.document.notes.find(({ id }) => id === props.selected);
 
   return (
     <>
@@ -437,28 +437,28 @@ export function PointSpace(props: Props) {
         onContextMenu={(event) => event.preventDefault()}
       >
         <canvas ref={canvas} aria-hidden="true" />
-        {lights.map(({ source, position }) => (
+        {lights.map(({ note, position }) => (
           <button
-            key={source.id}
+            key={note.id}
             ref={(element) => {
-              if (element) elements.current.set(source.id, element);
-              else elements.current.delete(source.id);
+              if (element) elements.current.set(note.id, element);
+              else elements.current.delete(note.id);
             }}
             type="button"
-            data-light={source.id}
+            data-light={note.id}
             className="light-hit"
             style={{ left: position.x, top: position.y }}
-            aria-label={sourceLabel(source)}
-            aria-pressed={scene.selected === source.id}
-            tabIndex={props.selected === source.id ? 0 : -1}
+            aria-label={noteLabel(note)}
+            aria-pressed={scene.selected === note.id}
+            tabIndex={props.selected === note.id ? 0 : -1}
             onFocus={(event) => {
               focusedLight.current = event.currentTarget;
-              props.onSelect(source.id);
+              props.onSelect(note.id);
             }}
             onClick={(event) => {
               // Pointer selection is resolved on release; retain assistive click activation.
-              if (event.detail === 0 && props.document.sources.some(({ id }) => id === source.id))
-                props.onSelect(source.id);
+              if (event.detail === 0 && props.document.notes.some(({ id }) => id === note.id))
+                props.onSelect(note.id);
             }}
           />
         ))}

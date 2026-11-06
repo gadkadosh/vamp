@@ -1,14 +1,14 @@
 import { STEP_COUNT } from "./score";
 import type { Playback } from "./score";
-import { snapSource, soundingStep, toneFor } from "./playground";
-import type { Collision, CollisionFeedback, Constellation, Source } from "./playground";
+import { snapNote, soundingStep, toneFor } from "./pattern";
+import type { Collision, CollisionFeedback, Pattern, Note } from "./pattern";
 import { fieldBounds, locate, TAU } from "./space";
 import type { LightProjection, Position, Size } from "./space";
 
 export const FEEDBACK_MS = 800;
-export type LandingPreview = { source: Source; collisions: Collision[] };
+export type LandingPreview = { note: Note; collisions: Collision[] };
 export type Scene = {
-  document: Constellation;
+  document: Pattern;
   selected: number | null;
   playing: boolean;
   reducedMotion: boolean;
@@ -78,14 +78,14 @@ export function drawSpace(
 ) {
   const bounds = fieldBounds(size);
   const progress = playback.position;
-  const ageFor = (source: Source) => {
-    const onset = playback.onsets.get(source.id);
-    const tone = toneFor(source);
+  const ageFor = (note: Note) => {
+    const onset = playback.onsets.get(note.id);
+    const tone = toneFor(note);
     if (
       !onset ||
       onset.time > playback.time ||
-      scene.preview?.source.id === source.id ||
-      onset.note.step !== soundingStep(source.step) ||
+      scene.preview?.note.id === note.id ||
+      onset.note.step !== soundingStep(note.step) ||
       onset.note.instrument !== tone.instrument ||
       onset.note.row !== tone.row
     )
@@ -104,11 +104,11 @@ export function drawSpace(
     context.fillRect(x - 35, bounds.top - 8, 37, bounds.height + 16);
   }
 
-  for (const { source, position } of points) {
-    const color = toneFor(source).color;
-    const draft = scene.preview?.source.id === source.id;
-    const selected = source.id === scene.selected || draft;
-    const age = ageFor(source);
+  for (const { note, position } of points) {
+    const color = toneFor(note).color;
+    const draft = scene.preview?.note.id === note.id;
+    const selected = note.id === scene.selected || draft;
+    const age = ageFor(note);
     const pulse = age < 1.8 ? Math.exp(-age * 3.1) : 0;
     const radius =
       (size.width < 520 ? 3.8 : 4.2) *
@@ -123,7 +123,7 @@ export function drawSpace(
     if (age < 1.1 && !scene.reducedMotion) {
       const expansion = 1 - Math.exp(-age * 2.3);
       ring(context, position, radius + expansion * 68, alpha(color, (1 - age / 1.1) * 0.18));
-      if (toneFor(source).instrument === "glass")
+      if (toneFor(note).instrument === "glass")
         ring(context, position, radius + expansion * 45, alpha(color, (1 - age / 1.1) * 0.09));
     }
     const core = context.createRadialGradient(
@@ -140,7 +140,7 @@ export function drawSpace(
     circle(context, position, radius, core);
 
     const matches = (collision: Collision) =>
-      collision.sourceId === source.id && collision.step === soundingStep(source.step);
+      collision.noteId === note.id && collision.step === soundingStep(note.step);
     const conflict =
       scene.preview?.collisions.some(matches) ||
       (scene.feedback &&
@@ -150,8 +150,8 @@ export function drawSpace(
   }
 
   if (scene.preview) {
-    const draft = scene.preview.source;
-    const landing = snapSource(draft);
+    const draft = scene.preview.note;
+    const landing = snapNote(draft);
     const from = locate(draft, size),
       target = locate(landing, size);
     const color = scene.preview.collisions.length ? "#f4a391" : "#d7ded0";

@@ -1,19 +1,19 @@
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import { DEFAULT_VOLUME, INSTRUMENTS, STEP_COUNT, STEP_SECONDS } from "../src/client/score";
 import type { InstrumentId, TimedNote } from "../src/client/score";
-import { compose } from "../src/client/playground";
-import type { Constellation } from "../src/client/playground";
+import { compose } from "../src/client/pattern";
+import type { Pattern } from "../src/client/pattern";
 import { Sequencer } from "../src/client/sequencer";
 import { carriers, channel, plucks, routesTo, TestAudioContext } from "./audio-context";
 
 let sequencer: Sequencer | null;
-let nextSourceId: number;
+let nextNoteId: number;
 
 beforeEach(() => {
   vi.useFakeTimers();
   TestAudioContext.instances = [];
   sequencer = null;
-  nextSourceId = 1;
+  nextNoteId = 1;
   vi.stubGlobal("AudioContext", TestAudioContext);
 });
 
@@ -34,7 +34,7 @@ function row(id: InstrumentId, name: string) {
 }
 
 function note(id: InstrumentId, name: string, step: number): TimedNote {
-  return { sourceId: nextSourceId++, instrument: id, row: row(id, name), step };
+  return { noteId: nextNoteId++, instrument: id, row: row(id, name), step };
 }
 
 async function start(getNotes: () => TimedNote[] = () => []) {
@@ -57,8 +57,8 @@ function sources(context: TestAudioContext, id: InstrumentId) {
   return [...carriers(context, id), ...plucks(context, id)];
 }
 
-const floatingLight: Constellation = {
-  sources: [{ id: 1, step: 2.37, tone: 7.13 }],
+const floatingLight: Pattern = {
+  notes: [{ id: 1, step: 2.37, tone: 7.13 }],
 };
 
 test.each([
@@ -69,7 +69,7 @@ test.each([
 ] as const)(
   "%s retains its envelope peaks, onset, and natural decay",
   async (id, tone, seconds, peaks) => {
-    const { context } = await start(() => compose({ sources: [{ id: 1, step: 0, tone }] }));
+    const { context } = await start(() => compose({ notes: [{ id: 1, step: 0, tone }] }));
     runUntil(context, 3.2);
     const voices = sources(context, id);
     expect(voices).toHaveLength(peaks.length);
@@ -89,7 +89,7 @@ test.each([
 );
 
 test("felt lights retain their partial tuning", async () => {
-  const { context } = await start(() => compose({ sources: [{ id: 1, step: 0, tone: 11 }] }));
+  const { context } = await start(() => compose({ notes: [{ id: 1, step: 0, tone: 11 }] }));
   const frequency = instrument("keys").notes[row("keys", "A4")].frequency;
   expect(carriers(context, "keys").map((source) => source.frequency.value)).toEqual(
     [1, 2.003, 3.009, 4.02].map((ratio) => frequency * ratio),
@@ -107,7 +107,7 @@ test("magnetic lights always schedule on the beat, including raw draft inputs", 
 
 test("event scheduling never duplicates buffered strikes when paused and resumed", async () => {
   const notes = compose({
-    sources: [{ ...floatingLight.sources[0], step: 0.25 }],
+    notes: [{ ...floatingLight.notes[0], step: 0.25 }],
   });
   const { engine, context } = await start(() => notes);
   expect(carriers(context, "mallet")).toHaveLength(1);
@@ -137,15 +137,15 @@ test("event timelines wrap without drift and skip missed loops instead of catchi
 });
 
 test("live timing edits use the next unscheduled audio window", async () => {
-  let document: Constellation = {
-    sources: [{ ...floatingLight.sources[0], step: 10.37 }],
+  let document: Pattern = {
+    notes: [{ ...floatingLight.notes[0], step: 10.37 }],
   };
   const { context } = await start(() => compose(document));
-  document = { sources: [] };
+  document = { notes: [] };
   runUntil(context, 2);
   expect(carriers(context, "mallet")).toHaveLength(0);
   document = {
-    sources: [{ ...floatingLight.sources[0], step: 16.37 }],
+    notes: [{ ...floatingLight.notes[0], step: 16.37 }],
   };
   runUntil(context, 3.2);
   expect(carriers(context, "mallet")).toHaveLength(1);
@@ -153,7 +153,7 @@ test("live timing edits use the next unscheduled audio window", async () => {
     0.05 + 16 * STEP_SECONDS,
     10,
   );
-  document = { sources: [{ ...floatingLight.sources[0], step: 18.37 }] };
+  document = { notes: [{ ...floatingLight.notes[0], step: 18.37 }] };
   runUntil(context, STEP_COUNT * STEP_SECONDS + 3.2);
   expect(carriers(context, "mallet").at(-1)!.start.mock.calls[0][0]).toBeCloseTo(
     0.05 + (STEP_COUNT + 18) * STEP_SECONDS,
@@ -162,7 +162,7 @@ test("live timing edits use the next unscheduled audio window", async () => {
 });
 
 test("notes ring naturally across the loop seam without being cut short", async () => {
-  const notes: TimedNote[] = [{ sourceId: 1, instrument: "bass", row: 5, step: 31.75 }];
+  const notes: TimedNote[] = [{ noteId: 1, instrument: "bass", row: 5, step: 31.75 }];
   const { context } = await start(() => notes);
   runUntil(context, 0.05 + 36 * STEP_SECONDS);
   const strings = plucks(context, "bass");
@@ -173,9 +173,9 @@ test("notes ring naturally across the loop seam without being cut short", async 
 
 test("bass damps only on the next bass onset, including across the loop seam", async () => {
   const notes: TimedNote[] = [
-    { sourceId: 1, instrument: "bass", row: 0, step: 0 },
-    { sourceId: 2, instrument: "keys", row: 0, step: 31.25 },
-    { sourceId: 3, instrument: "bass", row: 1, step: 31 },
+    { noteId: 1, instrument: "bass", row: 0, step: 0 },
+    { noteId: 2, instrument: "keys", row: 0, step: 31.25 },
+    { noteId: 3, instrument: "bass", row: 1, step: 31 },
   ];
   const { context } = await start(() => notes);
   runUntil(context, 0.05 + STEP_COUNT * STEP_SECONDS + 0.1);
@@ -205,9 +205,9 @@ test.each([
   "%s chords decay independently when simultaneous and later notes overlap",
   async (id, partials, seconds) => {
     const notes: TimedNote[] = [
-      { sourceId: 1, instrument: id, row: 0, step: 0 },
-      { sourceId: 2, instrument: id, row: 1, step: 0 },
-      { sourceId: 3, instrument: id, row: 2, step: 1 },
+      { noteId: 1, instrument: id, row: 0, step: 0 },
+      { noteId: 2, instrument: id, row: 1, step: 0 },
+      { noteId: 3, instrument: id, row: 2, step: 1 },
     ];
     const { context } = await start(() => notes);
     runUntil(context, 0.3);
@@ -323,7 +323,7 @@ test("master mute works before audio starts and unmute smoothly restores the vol
 test.each(["mallet", "keys", "bass", "glass"] as const)(
   "%s cleans up its sources and local nodes without disconnecting the channel",
   async (id) => {
-    const { context } = await start(() => [{ sourceId: 1, instrument: id, row: 0, step: 0 }]);
+    const { context } = await start(() => [{ noteId: 1, instrument: id, row: 0, step: 0 }]);
     const voices = sources(context, id);
     expect(voices).toHaveLength(id === "keys" ? 4 : id === "glass" ? 3 : 1);
     for (const voice of voices) {
@@ -383,9 +383,9 @@ test("a future loop's buffered strike does not replace the previous actual onset
   const next = 0.05 + STEP_COUNT * STEP_SECONDS;
   advance(context, next - 0.05);
   expect(carriers(context, "mallet")).toHaveLength(2);
-  expect(engine.getPlayback().onsets.get(notes[0].sourceId)?.time).toBe(0.05);
+  expect(engine.getPlayback().onsets.get(notes[0].noteId)?.time).toBe(0.05);
   advance(context, next);
-  expect(engine.getPlayback().onsets.get(notes[0].sourceId)?.time).toBe(next);
+  expect(engine.getPlayback().onsets.get(notes[0].noteId)?.time).toBe(next);
 });
 
 test("new notes behind the playhead have no onset until their next actual strike", async () => {
@@ -401,7 +401,7 @@ test("new notes behind the playhead have no onset until their next actual strike
   expect(carriers(context, "mallet")).toHaveLength(1);
   expect(engine.getPlayback().onsets.size).toBe(0);
   advance(context, next);
-  expect(engine.getPlayback().onsets.get(notes[0].sourceId)).toEqual({
+  expect(engine.getPlayback().onsets.get(notes[0].noteId)).toEqual({
     note: notes[0],
     time: next,
   });
@@ -422,7 +422,7 @@ test("onset identity is a snapshot of what was scheduled, not a mutable score re
   const { context, engine } = await start(() => notes);
   notes[0].row = row("mallet", "E4");
   advance(context, 0.05);
-  expect(engine.getPlayback().onsets.get(original.sourceId)?.note).toEqual(original);
+  expect(engine.getPlayback().onsets.get(original.noteId)?.note).toEqual(original);
 });
 
 test("playback drops old onset history even after all notes are deleted", async () => {

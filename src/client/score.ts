@@ -84,7 +84,7 @@ export const INSTRUMENTS = [
 ] as const;
 export type InstrumentId = (typeof INSTRUMENTS)[number]["id"];
 export type TimedNote = {
-  sourceId: number;
+  noteId: number;
   instrument: InstrumentId;
   row: number;
   step: number;
