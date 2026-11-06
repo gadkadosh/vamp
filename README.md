@@ -1,6 +1,6 @@
 # Vamp
 
-A small local musical prototype for an eventual shared experiment. The instrument uses React, TypeScript, and native Web Audio, with no audio libraries or external samples. The Worker scaffold is unchanged and is not used by the instrument.
+A local musical sketchbook: tap to leave a note, drag to change the phrase. Each note plays once per loop. Built with React, TypeScript, Canvas 2D, and native Web Audio. No external samples, audio libraries, or AI services are used. The Worker scaffold is unchanged and is not used by the instrument.
 
 ## Local development
 
@@ -12,53 +12,74 @@ pnpm types
 pnpm dev
 ```
 
-Open the URL printed by Vite, then press **Play** to enable audio.
+Open the URL printed by Vite, then press the central **Play** button to enable audio.
 
-## The instrument
+## Constellation
 
-Four roles share 32 sixteenth-note steps over two 4/4 measures at a fixed 88 BPM. Five voices are available, with two alternatives for the melody. Play begins with the original four-part ensemble; nylon starts muted:
+The Living light design gives the instrument a full-screen, deep-blue field with circular, material-colored lights. Left to right is time in a two-measure loop; bottom to top is low to high pitch. There are no cameras, depth controls, input modes, or permanent pitch grids. Open **How to play** for the guide; **Sketch options** (the three dots) contains the note count, clear, and reset actions.
 
-- **Mallet — harmony, C4–A4:** the unchanged original sine voice and seed. Its five pentatonic pitches can form chords or repeating figures.
-- **Felt keys — melody, C4–E5:** ten C-major pitches, including F and B. Only one note sounds at a time; selecting a pitch replaces the other pitch in that column, and a new note damps the previous note's tail.
-- **Nylon pluck — alternative melody, C4–E5:** a generated plucked string with a rounded body and a brighter initial pluck. It has the same ten pitches and starting phrase as felt keys, but an independently editable, monophonic grid. Use **Listen alone** to compare them, or mute felt keys and enable nylon to try it with the ensemble.
-- **Plucked bass — foundation, C2–C3:** six low pentatonic pitches, also one note at a time. A locally generated, Karplus–Strong-style string loses energy and brightness as it rings.
-- **Glass chimes — sparkle, C5–C6:** six high pentatonic pitches with slowly decaying, inharmonic overtones. Chords are allowed; the seed uses just two accents.
+Press **Play** to hear the starting phrase. Tap empty space to add a light; drag a light to change timing and pitch. A snapped landing ring and temporary alignment guides appear only while pressing to place or dragging a light, for both mouse and touch. There is no hover preview or temporary note-name label. The preview does not add or sound a note and disappears on release or cancellation. Selection strengthens the light's color and glow, without a surrounding ring. Select a light to reveal copy and remove controls beside it; undo restores the previous gesture.
 
-These are synthesized acoustic sketches, not recordings or physically accurate replicas. The common key keeps the registers related, but the melodic F and B introduce more tension and movement than pentatonic-only notes.
+### Magnetic timing and pitch
 
-- **Listen alone** mutes the other voices and starts or resumes playback. **Ensemble** restores mallet, felt keys, bass, and glass, leaving the alternative nylon voice muted. Neither resets the position or erases edits; use **Sound on / Muted** to choose any combination, including both melody voices.
-- Keys, nylon, and bass join adjacent cells of the same pitch into one note. It rings and naturally fades rather than holding a static tone; empty cells damp it. There is no arbitrary note-length cap. Each new two-measure loop re-articulates the phrase, so even a fully filled row plays again.
-- Mallet and glass strike again on each enabled cell, and can play simultaneous pitches. Click cells to edit any instrument independently, including while playing; any or all cells can be cleared.
-- Arrow keys move between cells within each grid; Space or Enter toggles the focused cell. On small screens, scroll each grid horizontally.
-- **Pause** freezes all voices and held notes; **Play** resumes from the same position. Master volume starts at 35%; setting it to 0 mutes all instruments without stopping the loop.
+Notes follow the pointer freely while being dragged. A faint landing point previews the nearest rhythmic step **and** pitch; release to settle gently onto both. Horizontal and vertical positions both snap. Dragging preserves the grab point. Moving past the right edge stays on the last timing step instead of wrapping unexpectedly to the beginning.
 
-Audio is scheduled slightly ahead on the Web Audio clock for steady timing, so edits take effect on the next unscheduled step. A sleeping or heavily throttled tab may skip strikes or delay held-note changes rather than catch up in a burst.
+Dragging is a local preview: the original music continues until a valid release, so passing through an occupied place does not change the composition. Escape, pointer cancellation, loss of pointer capture, or the browser window losing focus returns the light home. These interruptions also discard an unfinished scattered trail. Settling and bounce animations keep canvas lights and their hit targets aligned, and honor reduced-motion preferences. Timing is always quantized; there is no free-rhythm switch.
 
-Everything lives in memory in the current tab. Reloading restores the seed. There is no persistence, sharing, identity, contribution limit, daily lifecycle, or archive yet.
+### Gestures
+
+- **Click empty space:** add a light at its magnetic landing point. **Tap a light:** select it; tap it again to deselect. **Drag a light:** preview a new timing and pitch, then release to commit. Small pointer movements count as taps, not edits.
+- **Shift-drag empty space:** scatter a trail of lights as one undoable gesture.
+- **Right-click a light**, or select it and use its nearby bin button, to remove it. The duplicate button adds a copy four steps later.
+- **Undo / Redo:** buttons or Cmd/Ctrl Z / Cmd/Ctrl Shift Z. Each completed drag or scattered trail is one history entry. Undo during an unfinished gesture cancels only that gesture. Redo or another editing command cancels the gesture before applying the requested action. Canceling preserves the existing undo/redo history, and releasing a canceled gesture does nothing. Clear and reset are also undoable.
+- **Speaker icon:** toggle master mute; unmuted volume is 35%.
+
+Keyboard: Tab into the space. **Page Up / Page Down** select the previous/next light in time order, with lower pitches first at the same beat, and wrap around the loop. On Mac laptops, use Fn + ↑ / ↓. Arrows select the first light if none is selected, then move the selection one rhythmic step left/right or one pitch up/down. Enter adds a light. Keyboard focus follows the selected light and uses a small frame; pointer selection does not show it. Delete/Backspace removes; Escape deselects; Space plays or pauses. The surface has one Tab stop: the selected light, or the space itself when nothing is selected. Tab then visits the selected note’s copy/remove controls and leaves the surface. Navigation does not change the music or undo/redo history. Individual lights expose descriptive accessible names with their material, pitch, and beat position.
+
+The musical rules are deterministic. A single ascending tone axis passes through bass, mallet, melody, and glass materials, with color following material. It uses a subset of each voice’s original range so moving higher never drops the pitch when crossing a material boundary. The starting constellation adapts the original seed phrases to this axis.
+
+Lights land on 32 timing positions and 19 pitches, without a preallocated number of dots. **Felt keys are polyphonic**: different notes at the same beat form a chord, and overlapping notes decay independently. Mallet and glass also permit chords.
+
+**Bass has one note per rhythmic step.** Occupied landing points turn red and highlight the conflicting light. A new conflicting placement is rejected; a conflicting drag returns to its previous location. Identical sounds at the same beat are also rejected rather than creating silent duplicates. These rules apply to placement, dragging, duplication, keyboard moves, and scattering. A conflicting operation leaves every existing light unchanged and creates no undo entry. No light is silently ignored, and nothing is automatically shifted to another beat.
+
+Everything—including history—lives in memory in the current tab. Reloading restores the starting constellation. There is no persistence, sharing, identity, daily lifecycle, or archive yet.
+
+## Audio and visualization
+
+Four synthesized acoustic sketches are available: mallet, felt keys, plucked bass, and glass chimes. Felt keys are the single melodic voice; there is no material switch. These are synthesized sketches, not recordings or physically accurate replicas.
+
+All sounds share a two-measure 4/4 loop at 88 BPM in C major, with 32 sixteenth-note timing positions. Each material has its own natural decay, with no editable note lengths or visual tails. Bass damps at the next bass onset; other notes overlap independently. Notes can ring across the loop seam rather than being cut short. Lights bloom in their material color when they sound, with a faint sweep instead of a permanent timing ruler. Reduced motion uses illumination without expanding waves or a moving sweep. Each new loop re-articulates the phrase. Pause freezes the Web Audio clock and holds the lights; mute does not stop it. The visualization reads that same clock rather than running a separate animation timer.
+
+The composition compiles to a list of note events, each with a stable light ID, instrument, pitch row, and timing step. Audio is scheduled slightly ahead for steady timing. Blooms use recorded strike times from that scheduler, and only appear once the audio clock reaches the onset. New, moved, or repitched lights do not inherit a bloom from a sound they have not played. Changes affect the next unscheduled audio window rather than restarting the loop. A sleeping or heavily throttled tab may skip strikes rather than catch up in a burst; skipped strikes do not produce blooms.
+
+An unchanged paused instrument does not run a canvas animation loop. Edits and resizing redraw the scene, settling animates only until the light lands, and collision feedback expires with a single redraw. During playback, static hit targets stay in place and toolbar dimensions are observed on resize rather than measured every frame.
 
 ## Commands
 
 ```sh
-pnpm check    # Generate Worker types, then check formatting, lint, and types
-pnpm test     # Audio scheduler tests and Worker health-endpoint smoke test
+pnpm check    # Generate Worker types; check formatting, lint, and types
+pnpm test     # Spatial mapping, musical behavior, scheduler, and Worker tests
 pnpm build    # Build the frontend and Worker
 pnpm preview  # Preview the build locally (run build first)
 ```
 
 Vite+ is project-local; its CLI is also available through `pnpm exec vp`. Worker types are generated into the ignored `worker-configuration.d.ts`; regenerate them with `pnpm types` after changing `wrangler.jsonc`.
 
-The smoke test uses Wrangler's test harness, independently of Cloudflare's Vitest pool adapter, which does not yet support Vite+'s bundled Vitest version.
+The smoke test uses Wrangler’s test harness, independently of Cloudflare’s Vitest pool adapter, which does not yet support Vite+’s bundled Vitest version.
 
 ## Structure
 
-- `src/client/main.tsx`, `PatternGrid.tsx`, `style.css`: React instrument controls, reusable note grids, and plain CSS.
-- `src/client/score.ts`: Instrument roles, pitch ranges, seeds, and musical editing rules.
-- `src/client/sequencer.ts`: Shared audio-clock scheduler and single-voice articulation.
-- `src/client/voices.ts`: Mallet, felt keys, generated nylon and bass strings, and glass chimes.
+- `src/client/main.tsx`, `style.css`: Application bootstrap and styling.
+- `src/client/App.tsx`: Application shell, playback, transactional gesture history, and discovery guide.
+- `src/client/PointSpace.tsx`: Direct manipulation, grouped gestures, keyboard interaction, accessible hit targets, and canvas lifecycle.
+- `src/client/drawSpace.ts`: Audio-clock-driven lights, active-placement guides, landing previews, and playheads.
+- `src/client/space.ts`: 2D mapping, inverse picking, and shared light/hit-target settling animation.
+- `src/client/playground.ts`: Light model, tone/material registry, magnetic placement transactions, collision validation, and event compilation.
+- `src/client/score.ts`: Voice definitions, ranges, polyphony, seed onsets, and note-event/playback types.
+- `src/client/sequencer.ts`, `voices.ts`: Audio-clock scheduler and synthesized voices.
+- `test/`: React gesture/history and render-lifecycle tests in Happy DOM, canvas renderer tests, spatial round-trip and musical behavior tests, scheduler tests with a controlled clock, and the Worker smoke test. Evaluate actual sound in a Web Audio-capable browser.
 - `src/server/`: Worker entry point, `/api/health`, and the empty `Room` class.
-- `test/`: Scheduler behavior tests with a controlled audio clock, plus the Worker smoke test. To evaluate the actual sound, use the instrument in a Web Audio-capable browser.
-- `vite.config.ts`: Vite+, React, and Cloudflare local-development integration.
-- `wrangler.jsonc`: Worker configuration, Durable Object binding, and SQLite class registration.
+- `vite.config.ts`, `wrangler.jsonc`: Local development and Worker configuration.
 
 The class registration prepares a Durable Object namespace; no room instance is created until application code accesses one. Local state belongs in `.wrangler/`, which is ignored by Git.
 
@@ -71,4 +92,4 @@ pnpm exec wrangler login
 pnpm deploy
 ```
 
-`pnpm deploy` builds and then deploys the Worker with its frontend assets. Nothing deploys during installation, checks, tests, builds, or local development.
+`pnpm deploy` builds and then deploys the Worker with its frontend assets. Nothing deploys during installation, checks, tests, or builds.

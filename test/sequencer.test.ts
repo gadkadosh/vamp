@@ -1,27 +1,20 @@
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
-import {
-  createSeedPatterns,
-  DEFAULT_ENABLED,
-  DEFAULT_VOLUME,
-  INSTRUMENTS,
-  STEP_SECONDS,
-  togglePatternCell,
-} from "../src/client/score";
-import type { InstrumentId, Patterns } from "../src/client/score";
+import { DEFAULT_VOLUME, INSTRUMENTS, STEP_COUNT, STEP_SECONDS } from "../src/client/score";
+import type { InstrumentId, TimedNote } from "../src/client/score";
+import { compose } from "../src/client/playground";
+import type { Constellation } from "../src/client/playground";
 import { Sequencer } from "../src/client/sequencer";
-import { carriers, channel, plucks, TestAudioContext } from "./audio-context";
+import { carriers, channel, plucks, routesTo, TestAudioContext } from "./audio-context";
 
 let sequencer: Sequencer | null;
-const onStep = vi.fn();
+let nextSourceId: number;
 
 beforeEach(() => {
   vi.useFakeTimers();
   TestAudioContext.instances = [];
   sequencer = null;
-  onStep.mockClear();
+  nextSourceId = 1;
   vi.stubGlobal("AudioContext", TestAudioContext);
-  vi.stubGlobal("requestAnimationFrame", (callback: () => void) => setTimeout(callback, 16));
-  vi.stubGlobal("cancelAnimationFrame", clearTimeout);
 });
 
 afterEach(() => {
@@ -40,21 +33,15 @@ function row(id: InstrumentId, name: string) {
   return index;
 }
 
-function emptyPatterns() {
-  const patterns = createSeedPatterns();
-  Object.values(patterns).forEach((pattern) => pattern.forEach((cells) => cells.fill(false)));
-  return patterns;
+function note(id: InstrumentId, name: string, step: number): TimedNote {
+  return { sourceId: nextSourceId++, instrument: id, row: row(id, name), step };
 }
 
-function paint(patterns: Patterns, id: InstrumentId, name: string, step: number, length = 1) {
-  patterns[id][row(id, name)].fill(true, step, step + length);
-}
-
-async function start(patterns: Patterns) {
-  const engine = new Sequencer(() => patterns, onStep);
+async function start(getNotes: () => TimedNote[] = () => []) {
+  const engine = new Sequencer(getNotes);
   sequencer = engine;
   await engine.play();
-  return { engine, context: TestAudioContext.instances[0] };
+  return { engine, context: TestAudioContext.instances.at(-1)! };
 }
 
 function advance(context: TestAudioContext, time: number) {
@@ -70,243 +57,276 @@ function sources(context: TestAudioContext, id: InstrumentId) {
   return [...carriers(context, id), ...plucks(context, id)];
 }
 
-const monoIds = ["keys", "nylon", "bass"] as const;
+const floatingLight: Constellation = {
+  sources: [{ id: 1, step: 2.37, tone: 7.13 }],
+};
 
-test("the ensemble has distinct ranges and roles, with more than five melodic pitches", () => {
-  const patterns = createSeedPatterns();
-  expect(INSTRUMENTS.map((item) => item.id)).toEqual(["mallet", "keys", "nylon", "bass", "glass"]);
-  expect(instrument("keys").notes.map((note) => note.name)).toEqual([
-    "E5",
-    "D5",
-    "C5",
-    "B4",
-    "A4",
-    "G4",
-    "F4",
-    "E4",
-    "D4",
-    "C4",
-  ]);
-  expect(instrument("bass").notes.at(-1)!.name).toBe("C2");
-  expect(instrument("glass").notes[0].name).toBe("C6");
-  for (const item of INSTRUMENTS) {
-    expect(patterns[item.id]).toHaveLength(item.notes.length);
-    expect(patterns[item.id].every((cells) => cells.length === 32)).toBe(true);
-    expect(patterns[item.id].flat().some(Boolean)).toBe(true);
-    if (item.mode === "mono") {
-      for (let step = 0; step < 32; step++)
-        expect(patterns[item.id].filter((cells) => cells[step]).length).toBeLessThanOrEqual(1);
+test.each([
+  ["bass", 2, 2.8, [0.13]],
+  ["mallet", 7, 0.9, [0.12]],
+  ["keys", 11, 2.43, [0.065, 0.014, 0.0045, 0.0015]],
+  ["glass", 17, 2.83, [0.035, 0.008, 0.002]],
+] as const)(
+  "%s retains its envelope peaks, onset, and natural decay",
+  async (id, tone, seconds, peaks) => {
+    const { context } = await start(() => compose({ sources: [{ id: 1, step: 0, tone }] }));
+    runUntil(context, 3.2);
+    const voices = sources(context, id);
+    expect(voices).toHaveLength(peaks.length);
+    for (const source of voices) {
+      expect(source.start).toHaveBeenCalledExactlyOnceWith(0.05);
+      expect(source.stop).toHaveBeenCalledTimes(1);
     }
-  }
-  expect(patterns.mallet.flat().filter(Boolean)).toHaveLength(8);
-  expect(patterns.glass.flat().filter(Boolean)).toHaveLength(2);
-  expect(DEFAULT_ENABLED).toEqual({
-    mallet: true,
-    keys: true,
-    nylon: false,
-    bass: true,
-    glass: true,
-  });
-});
-
-test("nylon and felt keys share a starting melody and range but their edits are independent", () => {
-  const patterns = createSeedPatterns();
-  expect(instrument("nylon").notes).toEqual(instrument("keys").notes);
-  expect(patterns.nylon).toEqual(patterns.keys);
-  expect(patterns.nylon).not.toBe(patterns.keys);
-  expect(patterns.nylon[0]).not.toBe(patterns.keys[0]);
-  const edited = togglePatternCell(patterns, "nylon", 0, 0);
-  expect(edited.nylon[0][0]).toBe(true);
-  expect(edited.keys[0][0]).toBe(false);
-  expect(edited.keys).toBe(patterns.keys);
-});
-
-test.each(monoIds)(
-  "editing %s replaces the other pitch in that step, not neighboring steps or tracks",
-  (id) => {
-    const before = emptyPatterns();
-    const first = 0;
-    const second = 1;
-    before[id][first][3] = before[id][first][4] = true;
-    const next = togglePatternCell(before, id, second, 3);
-    expect(next[id][first][3]).toBe(false);
-    expect(next[id][second][3]).toBe(true);
-    expect(next[id][first][4]).toBe(true);
-    expect(before[id][first][3]).toBe(true);
-    expect(before[id][second][3]).toBe(false);
-    expect(next.mallet).toBe(before.mallet);
-    const removed = togglePatternCell(next, id, second, 3);
-    expect(removed[id].some((cells) => cells[3])).toBe(false);
+    expect(voices[0].stop.mock.calls[0][0]).toBeCloseTo(0.05 + seconds, 10);
+    expect(
+      context.gains
+        .filter((gain) => routesTo(gain, channel(context, id)))
+        .flatMap((gain) => gain.gain.linearRampToValueAtTime.mock.calls)
+        .filter(([value]) => value > 0)
+        .map(([value]) => value),
+    ).toEqual(peaks);
   },
 );
 
-test("mallet and glass retain editable chords, with no shared rows between seeds", () => {
-  const before = emptyPatterns();
-  for (const id of ["mallet", "glass"] as const) {
-    const first = togglePatternCell(before, id, 0, 0);
-    const chord = togglePatternCell(first, id, 1, 0);
-    expect(chord[id][0][0]).toBe(true);
-    expect(chord[id][1][0]).toBe(true);
-    expect(before[id][0][0]).toBe(false);
-  }
-  const seeds = createSeedPatterns();
-  seeds.keys[0][0] = true;
-  expect(seeds.keys[1][0]).toBe(false);
-  expect(createSeedPatterns().keys[0][0]).toBe(false);
+test("felt lights retain their partial tuning", async () => {
+  const { context } = await start(() => compose({ sources: [{ id: 1, step: 0, tone: 11 }] }));
+  const frequency = instrument("keys").notes[row("keys", "A4")].frequency;
+  expect(carriers(context, "keys").map((source) => source.frequency.value)).toEqual(
+    [1, 2.003, 3.009, 4.02].map((ratio) => frequency * ratio),
+  );
+  expect(plucks(context, "keys")).toEqual([]);
 });
 
-test("audio starts only on Play and the unchanged mallet loops at exactly 32 steps", async () => {
-  const patterns = emptyPatterns();
-  paint(patterns, "mallet", "C4", 0);
-  paint(patterns, "mallet", "A4", 31);
+test("magnetic lights always schedule on the beat, including raw draft inputs", async () => {
+  const { context } = await start(() => compose(floatingLight));
+  runUntil(context, 0.6);
+  const strikes = carriers(context, "mallet");
+  expect(strikes).toHaveLength(1);
+  expect(strikes[0].start.mock.calls[0][0]).toBeCloseTo(0.05 + 2 * STEP_SECONDS, 10);
+});
+
+test("event scheduling never duplicates buffered strikes when paused and resumed", async () => {
+  const notes = compose({
+    sources: [{ ...floatingLight.sources[0], step: 0.25 }],
+  });
+  const { engine, context } = await start(() => notes);
+  expect(carriers(context, "mallet")).toHaveLength(1);
+  runUntil(context, 0.3);
+  await engine.pause();
+  vi.advanceTimersByTime(2000);
+  await engine.play();
+  runUntil(context, 0.6);
+  expect(carriers(context, "mallet")).toHaveLength(1);
+});
+
+test("event timelines wrap without drift and skip missed loops instead of catching up in a burst", async () => {
+  const { context } = await start(() => compose(floatingLight));
+  const loop = STEP_COUNT * STEP_SECONDS;
+  runUntil(context, loop + 0.6);
+  const strikes = carriers(context, "mallet");
+  expect(strikes).toHaveLength(2);
+  expect(strikes[1].start.mock.calls[0][0] - strikes[0].start.mock.calls[0][0]).toBeCloseTo(
+    loop,
+    10,
+  );
+  const before = strikes.length;
+  advance(context, 40);
+  const added = carriers(context, "mallet").slice(before);
+  expect(added.length).toBeLessThanOrEqual(1);
+  expect(added.every((source) => source.start.mock.calls[0][0] >= 40)).toBe(true);
+});
+
+test("live timing edits use the next unscheduled audio window", async () => {
+  let document: Constellation = {
+    sources: [{ ...floatingLight.sources[0], step: 10.37 }],
+  };
+  const { context } = await start(() => compose(document));
+  document = { sources: [] };
+  runUntil(context, 2);
+  expect(carriers(context, "mallet")).toHaveLength(0);
+  document = {
+    sources: [{ ...floatingLight.sources[0], step: 16.37 }],
+  };
+  runUntil(context, 3.2);
+  expect(carriers(context, "mallet")).toHaveLength(1);
+  expect(carriers(context, "mallet")[0].start.mock.calls[0][0]).toBeCloseTo(
+    0.05 + 16 * STEP_SECONDS,
+    10,
+  );
+  document = { sources: [{ ...floatingLight.sources[0], step: 18.37 }] };
+  runUntil(context, STEP_COUNT * STEP_SECONDS + 3.2);
+  expect(carriers(context, "mallet").at(-1)!.start.mock.calls[0][0]).toBeCloseTo(
+    0.05 + (STEP_COUNT + 18) * STEP_SECONDS,
+    10,
+  );
+});
+
+test("notes ring naturally across the loop seam without being cut short", async () => {
+  const notes: TimedNote[] = [{ sourceId: 1, instrument: "bass", row: 5, step: 31.75 }];
+  const { context } = await start(() => notes);
+  runUntil(context, 0.05 + 36 * STEP_SECONDS);
+  const strings = plucks(context, "bass");
+  expect(strings).toHaveLength(1);
+  expect(strings[0].start).toHaveBeenCalledWith(0.05 + 31.75 * STEP_SECONDS);
+  expect(strings[0].stop).toHaveBeenCalledExactlyOnceWith(0.05 + 31.75 * STEP_SECONDS + 2.8);
+});
+
+test("bass damps only on the next bass onset, including across the loop seam", async () => {
+  const notes: TimedNote[] = [
+    { sourceId: 1, instrument: "bass", row: 0, step: 0 },
+    { sourceId: 2, instrument: "keys", row: 0, step: 31.25 },
+    { sourceId: 3, instrument: "bass", row: 1, step: 31 },
+  ];
+  const { context } = await start(() => notes);
+  runUntil(context, 0.05 + STEP_COUNT * STEP_SECONDS + 0.1);
+  const strings = plucks(context, "bass");
+  expect(strings).toHaveLength(3);
+  expect(strings[0].stop).toHaveBeenCalledExactlyOnceWith(0.05 + 2.8);
+  expect(strings[1].stop.mock.calls.at(-1)![0]).toBeCloseTo(0.05 + STEP_COUNT * STEP_SECONDS, 10);
+  expect(strings[2].stop).toHaveBeenCalledExactlyOnceWith(0.05 + STEP_COUNT * STEP_SECONDS + 2.8);
+  const gates = context.gains.filter((gain) => gain.connections.includes(channel(context, "bass")));
+  expect(gates[0].gain.setValueAtTime).not.toHaveBeenCalled();
+  expect(gates[0].gain.linearRampToValueAtTime).not.toHaveBeenCalled();
+  expect(gates[1].gain.setValueAtTime).toHaveBeenCalledWith(
+    1,
+    0.05 + STEP_COUNT * STEP_SECONDS - 0.008,
+  );
+  expect(gates[1].gain.linearRampToValueAtTime).toHaveBeenCalledWith(
+    0,
+    0.05 + STEP_COUNT * STEP_SECONDS,
+  );
+});
+
+test.each([
+  ["mallet", 1, 0.9],
+  ["keys", 4, 2.43],
+  ["glass", 3, 2.83],
+] as const)(
+  "%s chords decay independently when simultaneous and later notes overlap",
+  async (id, partials, seconds) => {
+    const notes: TimedNote[] = [
+      { sourceId: 1, instrument: id, row: 0, step: 0 },
+      { sourceId: 2, instrument: id, row: 1, step: 0 },
+      { sourceId: 3, instrument: id, row: 2, step: 1 },
+    ];
+    const { context } = await start(() => notes);
+    runUntil(context, 0.3);
+    const voices = carriers(context, id);
+    expect(voices).toHaveLength(3 * partials);
+    const fundamentals = voices.filter((_, index) => index % partials === 0);
+    expect(fundamentals[0].start).toHaveBeenCalledExactlyOnceWith(0.05);
+    expect(fundamentals[1].start).toHaveBeenCalledExactlyOnceWith(0.05);
+    expect(fundamentals[2].start.mock.calls[0][0]).toBeCloseTo(0.05 + STEP_SECONDS, 10);
+    runUntil(context, 3);
+    for (const source of voices) expect(source.stop).toHaveBeenCalledTimes(1);
+    for (const source of fundamentals) {
+      expect(source.stop.mock.calls[0][0] - source.start.mock.calls[0][0]).toBeCloseTo(seconds, 10);
+    }
+  },
+);
+
+test("the spatial playhead reads the audio clock, wraps the loop, and holds while paused", async () => {
+  const { engine, context } = await start();
+  expect(engine.getPlayback().position).toBeNull();
+  advance(context, 0.05 + STEP_SECONDS * 3.25);
+  expect(engine.getPlayback().position).toBeCloseTo(3.25);
+  await engine.pause();
+  vi.advanceTimersByTime(1000);
+  expect(engine.getPlayback().position).toBeCloseTo(3.25);
+  await engine.play();
+  advance(context, 0.05 + STEP_SECONDS * 34.5);
+  expect(engine.getPlayback().position).toBeCloseTo(2.5);
+});
+
+test("audio starts only on Play and mallet events loop at exactly 32 steps", async () => {
+  const notes = [note("mallet", "C4", 0), note("mallet", "A4", 31)];
+  const engine = new Sequencer(() => notes);
+  sequencer = engine;
   expect(TestAudioContext.instances).toHaveLength(0);
-  const { context } = await start(patterns);
+  expect(engine.getPlayback().position).toBeNull();
+  await engine.play();
+  await engine.play();
+  const context = TestAudioContext.instances[0];
+  expect(TestAudioContext.instances).toHaveLength(1);
   expect(context.state).toBe("running");
   expect(context.gains[0].gain.value).toBe(DEFAULT_VOLUME);
-  runUntil(context, STEP_SECONDS * 32 + 0.1);
+  runUntil(context, STEP_SECONDS * STEP_COUNT + 0.1);
   const voices = carriers(context, "mallet");
   expect(voices.map((voice) => voice.frequency.value)).toEqual([261.626, 440, 261.626]);
   const times = voices.map((voice) => voice.start.mock.calls[0][0]);
   expect(times[0]).toBeCloseTo(0.05);
   expect(times[1]).toBeCloseTo(0.05 + 31 * STEP_SECONDS);
-  expect(times[2] - times[0]).toBeCloseTo(32 * STEP_SECONDS);
-  expect(onStep).toHaveBeenLastCalledWith(0);
+  expect(times[2] - times[0]).toBeCloseTo(STEP_COUNT * STEP_SECONDS);
 });
 
-test("live edits reach the next unscheduled step without changing the other roles", async () => {
-  const patterns = emptyPatterns();
-  paint(patterns, "mallet", "C4", 1);
-  const { context } = await start(patterns);
-  patterns.mallet[row("mallet", "C4")][1] = false;
-  paint(patterns, "mallet", "A4", 1);
-  paint(patterns, "mallet", "E4", 1);
-  paint(patterns, "glass", "C6", 1);
-  paint(patterns, "glass", "A5", 1);
+test("live edits schedule chords in multiple instruments without retaining removed notes", async () => {
+  let notes = [note("mallet", "C4", 1)];
+  const { context } = await start(() => notes);
+  notes = [
+    note("mallet", "A4", 1),
+    note("mallet", "E4", 1),
+    note("glass", "C6", 1),
+    note("glass", "A5", 1),
+  ];
   advance(context, 0.15);
   const mallet = carriers(context, "mallet");
   expect(mallet.map((voice) => voice.frequency.value)).toEqual([440, 329.628]);
   expect(carriers(context, "glass")).toHaveLength(6);
   for (const voice of [...mallet, ...carriers(context, "glass")])
-    expect(voice.start).toHaveBeenCalledWith(0.05 + STEP_SECONDS);
+    expect(voice.start).toHaveBeenCalledExactlyOnceWith(0.05 + STEP_SECONDS);
   expect(sources(context, "keys")).toHaveLength(0);
   expect(sources(context, "bass")).toHaveLength(0);
 });
 
-test.each(monoIds)(
-  "%s ties notes and damps the old voice completely before a new pitch",
-  async (id) => {
-    const patterns = emptyPatterns();
-    patterns[id][0][0] = patterns[id][0][1] = patterns[id][1][2] = true;
-    const { context } = await start(patterns);
-    runUntil(context, 0.65);
-    const voices = sources(context, id);
-    const count = id === "keys" ? 4 : 1;
-    expect(voices).toHaveLength(count * 2);
-    const change = 0.05 + 2 * STEP_SECONDS;
-    expect(voices[0].start).toHaveBeenCalledWith(0.05);
-    expect(voices[count].start.mock.calls[0][0]).toBeCloseTo(change);
-    expect(voices[0].stop.mock.calls.at(-1)![0]).toBeCloseTo(change);
-    for (const voice of voices.slice(0, count))
-      expect(voice.stop.mock.calls.at(-1)![0]).toBeLessThanOrEqual(change);
-    const gate = context.gains.find((gain) => gain.connections.includes(channel(context, id)))!;
-    expect(gate.gain.linearRampToValueAtTime).toHaveBeenCalledWith(0, change);
-    expect(voices[count].stop.mock.calls.at(-1)![0]).toBeCloseTo(0.05 + 3 * STEP_SECONDS);
-  },
-);
-
-test.each(monoIds)(
-  "%s never makes a chord even if a malformed column contains multiple pitches",
-  async (id) => {
-    const patterns = emptyPatterns();
-    patterns[id][0][0] = patterns[id][1][0] = true;
-    const { context } = await start(patterns);
-    expect(sources(context, id)).toHaveLength(id === "keys" ? 4 : 1);
-    if (id === "keys")
-      expect(carriers(context, id)[0].frequency.value).toBe(instrument(id).notes[0].frequency);
-  },
-);
-
-test.each(monoIds)(
-  "%s lets long notes decay naturally and re-articulates them once per loop",
-  async (id) => {
-    const patterns = emptyPatterns();
-    patterns[id][0].fill(true);
-    const { context } = await start(patterns);
-    runUntil(context, STEP_SECONDS * 64 + 0.1);
-    const voices = sources(context, id);
-    const count = id === "keys" ? 4 : 1;
-    expect(voices).toHaveLength(count * 3);
-    for (const voice of voices) {
-      expect(voice.stop).toHaveBeenCalledTimes(1);
-      expect(voice.stop.mock.calls[0][0] - voice.start.mock.calls[0][0]).toBeLessThan(3);
-    }
-    expect(voices[count].start.mock.calls[0][0] - voices[0].start.mock.calls[0][0]).toBeCloseTo(
-      32 * STEP_SECONDS,
-    );
-    patterns[id][0][1] = false;
-    advance(context, STEP_SECONDS * 64 + 0.15);
-    advance(context, STEP_SECONDS * 64 + 0.32);
-    expect(sources(context, id)).toHaveLength(voices.length + count);
-  },
-);
-
-test("pause and resume preserve both mono notes without re-striking or duplicating sources", async () => {
-  const patterns = emptyPatterns();
-  patterns.mallet.forEach((cells) => cells.fill(true));
-  patterns.keys[0].fill(true);
-  patterns.bass[0].fill(true);
-  const { context, engine } = await start(patterns);
+test("pause preserves overlapping voices and resumes scheduling without re-striking", async () => {
+  const notes = [note("keys", "E5", 0), note("bass", "C2", 0), note("mallet", "C4", 1)];
+  const { context, engine } = await start(() => notes);
   advance(context, 0.1);
   await engine.pause();
-  const count = context.oscillators.length;
-  const steps = onStep.mock.calls.length;
   vi.advanceTimersByTime(2000);
   expect(context.state).toBe("suspended");
-  expect(context.oscillators).toHaveLength(count);
-  expect(onStep).toHaveBeenCalledTimes(steps);
+  expect(carriers(context, "keys")).toHaveLength(4);
+  expect(plucks(context, "bass")).toHaveLength(1);
+  expect(carriers(context, "mallet")).toHaveLength(0);
   await engine.play();
   expect(TestAudioContext.instances).toHaveLength(1);
-  expect(context.oscillators).toHaveLength(count);
+  expect(carriers(context, "mallet")).toHaveLength(0);
   advance(context, 0.15);
   advance(context, 0.23);
-  expect(onStep).toHaveBeenLastCalledWith(1);
-  expect(context.oscillators).toHaveLength(count + 5);
+  expect(carriers(context, "mallet")).toHaveLength(1);
   expect(carriers(context, "keys")).toHaveLength(4);
   expect(plucks(context, "bass")).toHaveLength(1);
 });
 
-test("the four roles can be muted independently under master volume", async () => {
-  const engine = new Sequencer(createSeedPatterns, onStep);
+test("master mute works before audio starts and unmute smoothly restores the volume", async () => {
+  const engine = new Sequencer(() => []);
   sequencer = engine;
-  engine.setEnabled("glass", false);
+  engine.setVolume(0);
   expect(TestAudioContext.instances).toHaveLength(0);
   await engine.play();
   const context = TestAudioContext.instances[0];
+  expect(context.gains[0].gain.value).toBe(0);
+  expect(context.gains[0].connect).toHaveBeenCalledWith(context.destination);
   for (const { id } of INSTRUMENTS) {
     expect(channel(context, id).connect).toHaveBeenCalledWith(context.gains[0]);
-    expect(channel(context, id).gain.value).toBe(id === "glass" ? 0 : Number(DEFAULT_ENABLED[id]));
+    expect(channel(context, id).gain.value).toBe(1);
   }
   advance(context, 0.23);
-  engine.setEnabled("glass", true);
-  engine.setEnabled("keys", false);
-  engine.setVolume(0);
-  expect(channel(context, "glass").gain.setTargetAtTime).toHaveBeenLastCalledWith(1, 0.23, 0.02);
-  expect(channel(context, "keys").gain.setTargetAtTime).toHaveBeenLastCalledWith(0, 0.23, 0.02);
-  expect(context.gains[0].gain.setTargetAtTime).toHaveBeenLastCalledWith(0, 0.23, 0.02);
+  engine.setVolume(DEFAULT_VOLUME);
+  expect(context.gains[0].gain.setTargetAtTime).toHaveBeenLastCalledWith(
+    DEFAULT_VOLUME,
+    0.23,
+    0.02,
+  );
 });
 
-test.each(monoIds)(
+test.each(["mallet", "keys", "bass", "glass"] as const)(
   "%s cleans up its sources and local nodes without disconnecting the channel",
   async (id) => {
-    const patterns = emptyPatterns();
-    patterns[id][0][0] = true;
-    const { context } = await start(patterns);
-    advance(context, 0.15);
-    const end = 0.05 + STEP_SECONDS;
+    const { context } = await start(() => [{ sourceId: 1, instrument: id, row: 0, step: 0 }]);
     const voices = sources(context, id);
-    expect(voices).toHaveLength(id === "keys" ? 4 : 1);
+    expect(voices).toHaveLength(id === "keys" ? 4 : id === "glass" ? 3 : 1);
     for (const voice of voices) {
-      expect(voice.stop.mock.calls.at(-1)![0]).toBeCloseTo(end);
       expect(voice.onended).not.toBeNull();
       voice.onended!();
       expect(voice.disconnect).toHaveBeenCalledTimes(1);
@@ -314,15 +334,13 @@ test.each(monoIds)(
     for (const part of [...context.filters, ...context.gains.slice(INSTRUMENTS.length + 1)])
       expect(part.disconnect).toHaveBeenCalledTimes(1);
     expect(channel(context, id).disconnect).not.toHaveBeenCalled();
+    expect(context.gains[0].disconnect).not.toHaveBeenCalled();
   },
 );
 
 test("the bass's generated string loses energy over time and reuses buffers only for the same pitch", async () => {
-  const patterns = emptyPatterns();
-  paint(patterns, "bass", "C2", 0);
-  paint(patterns, "bass", "C2", 2);
-  paint(patterns, "bass", "G2", 4);
-  const { context } = await start(patterns);
+  const notes = [note("bass", "C2", 0), note("bass", "C2", 2), note("bass", "G2", 4)];
+  const { context } = await start(() => notes);
   runUntil(context, 0.85);
   const voices = plucks(context, "bass");
   expect(voices).toHaveLength(3);
@@ -337,46 +355,83 @@ test("the bass's generated string loses energy over time and reuses buffers only
   expect(late).toBeLessThan(early / 3);
 });
 
-test("nylon has a finite, decaying generated string and reuses only matching pitch buffers", async () => {
-  const patterns = emptyPatterns();
-  paint(patterns, "nylon", "C4", 0);
-  paint(patterns, "nylon", "C4", 2);
-  paint(patterns, "nylon", "E5", 4);
-  const { context } = await start(patterns);
-  runUntil(context, 0.85);
-  const voices = plucks(context, "nylon");
-  expect(voices).toHaveLength(3);
-  expect(voices[0].buffer).toBe(voices[1].buffer);
-  expect(voices[2].buffer).not.toBe(voices[0].buffer);
-  const data = voices[0].buffer!.getChannelData(0);
-  const rms = (values: Float32Array) =>
-    Math.sqrt(values.reduce((sum, value) => sum + value * value, 0) / values.length);
-  expect(rms(data.slice(0, context.sampleRate * 0.04))).toBeGreaterThan(0.05);
-  expect(rms(data.slice(context.sampleRate, context.sampleRate * 1.5))).toBeLessThan(
-    rms(data.slice(0, context.sampleRate * 0.1)) / 10,
-  );
-  expect(data.length / context.sampleRate).toBe(2.2);
+test("dispose stops scheduling, closes audio, and prevents subsequent playback", async () => {
+  const { context, engine } = await start(() => [note("mallet", "C4", 0)]);
+  expect(carriers(context, "mallet")).toHaveLength(1);
+  engine.dispose();
+  advance(context, STEP_COUNT * STEP_SECONDS);
+  await engine.play();
+  expect(context.state).toBe("closed");
+  expect(TestAudioContext.instances).toHaveLength(1);
+  expect(carriers(context, "mallet")).toHaveLength(1);
 });
 
-test("a stalled scheduler skips missed strikes and damps mono notes whose cells have passed", async () => {
-  const patterns = emptyPatterns();
-  patterns.mallet[0].fill(true);
-  patterns.keys[0][0] = patterns.nylon[0][0] = patterns.bass[0][0] = true;
-  const { context, engine } = await start(patterns);
-  advance(context, 2);
-  const time = 0.05 + 12 * STEP_SECONDS;
-  const mallet = carriers(context, "mallet");
-  expect(mallet).toHaveLength(2);
-  expect(mallet[1].start.mock.calls[0][0]).toBeCloseTo(time);
-  for (const id of monoIds) {
-    const voices = sources(context, id);
-    expect(voices).toHaveLength(id === "keys" ? 4 : 1);
-    expect(voices[0].stop.mock.calls.at(-1)![0]).toBeCloseTo(time);
-  }
-  expect(onStep).toHaveBeenLastCalledWith(11);
-  const count = context.oscillators.length;
-  engine.dispose();
-  vi.advanceTimersByTime(1000);
-  expect(context.state).toBe("closed");
-  expect(context.oscillators).toHaveLength(count);
+test("playback exposes actual onsets only after their buffered start time arrives", async () => {
+  const notes = [note("mallet", "C4", 0), note("keys", "E5", 30)];
+  const { context, engine } = await start(() => notes);
+  expect(carriers(context, "mallet")).toHaveLength(1);
+  expect(engine.getPlayback().onsets.size).toBe(0);
+  advance(context, 0.05);
+  const playback = engine.getPlayback();
+  expect(playback.time).toBe(0.05);
+  expect([...playback.onsets.values()]).toEqual([{ note: notes[0], time: 0.05 }]);
+});
+
+test("a future loop's buffered strike does not replace the previous actual onset early", async () => {
+  const notes = [note("mallet", "C4", 0)];
+  const { context, engine } = await start(() => notes);
+  const next = 0.05 + STEP_COUNT * STEP_SECONDS;
+  advance(context, next - 0.05);
+  expect(carriers(context, "mallet")).toHaveLength(2);
+  expect(engine.getPlayback().onsets.get(notes[0].sourceId)?.time).toBe(0.05);
+  advance(context, next);
+  expect(engine.getPlayback().onsets.get(notes[0].sourceId)?.time).toBe(next);
+});
+
+test("new notes behind the playhead have no onset until their next actual strike", async () => {
+  let notes: TimedNote[] = [];
+  const { context, engine } = await start(() => notes);
+  advance(context, 0.05 + 2 * STEP_SECONDS);
+  notes = [note("mallet", "C4", 1)];
+  advance(context, 0.05 + 3 * STEP_SECONDS);
+  expect(engine.getPlayback().onsets.size).toBe(0);
+  expect(carriers(context, "mallet")).toHaveLength(0);
+  const next = 0.05 + STEP_COUNT * STEP_SECONDS + STEP_SECONDS;
+  advance(context, next - 0.05);
+  expect(carriers(context, "mallet")).toHaveLength(1);
+  expect(engine.getPlayback().onsets.size).toBe(0);
+  advance(context, next);
+  expect(engine.getPlayback().onsets.get(notes[0].sourceId)).toEqual({
+    note: notes[0],
+    time: next,
+  });
+});
+
+test("a stalled scheduler never reports missed strikes as if they played", async () => {
+  let notes: TimedNote[] = [];
+  const { context, engine } = await start(() => notes);
+  notes = [note("mallet", "C4", 4)];
+  advance(context, 0.05 + 5 * STEP_SECONDS);
+  expect(carriers(context, "mallet")).toHaveLength(0);
+  expect(engine.getPlayback().onsets.size).toBe(0);
+});
+
+test("onset identity is a snapshot of what was scheduled, not a mutable score reference", async () => {
+  const notes = [note("mallet", "C4", 0)];
+  const original = { ...notes[0] };
+  const { context, engine } = await start(() => notes);
+  notes[0].row = row("mallet", "E4");
+  advance(context, 0.05);
+  expect(engine.getPlayback().onsets.get(original.sourceId)?.note).toEqual(original);
+});
+
+test("playback drops old onset history even after all notes are deleted", async () => {
+  let notes = [note("mallet", "C4", 0)];
+  const { context, engine } = await start(() => notes);
+  advance(context, 0.05);
+  expect(engine.getPlayback().onsets.size).toBe(1);
+  notes = [];
+  advance(context, 100);
+  expect(engine.getPlayback().onsets.size).toBe(0);
+  expect(carriers(context, "mallet")).toHaveLength(1);
 });
