@@ -32,7 +32,7 @@ export const INSTRUMENTS = {
     ],
   },
   keys: {
-    name: "Felt keys",
+    name: "Soft piano",
     polyphonic: true,
     notes: pitches([76, 74, 72, 71, 69, 67, 65, 64, 62, 60]),
     start: startFeltKeys,
