@@ -97,10 +97,7 @@ function App() {
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    const sequencer = new Sequencer(
-      () => scoreRef.current,
-      () => {},
-    );
+    const sequencer = new Sequencer(() => scoreRef.current);
     engine.current = sequencer;
     return () => {
       sequencer.dispose();

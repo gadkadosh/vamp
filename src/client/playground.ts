@@ -1,4 +1,4 @@
-import { INSTRUMENTS, STEP_COUNT, VOICE_POLYPHONY } from "./score";
+import { INSTRUMENTS, STEP_COUNT } from "./score";
 import type { TimedNote } from "./score";
 
 export const MATERIALS = [
@@ -21,6 +21,7 @@ export const TONES = MATERIALS.flatMap((material) => {
   const instrument = INSTRUMENTS.find(({ id }) => id === material.instrument)!;
   return material.notes.map((name) => ({
     instrument: material.instrument,
+    polyphonic: instrument.polyphonic,
     color: material.color,
     row: instrument.notes.findIndex((note) => note.name === name),
     note: instrument.notes.find((note) => note.name === name)!,
@@ -78,7 +79,7 @@ export function findCollisions(document: Constellation, candidate: Source): Coll
     if (other.id === candidate.id) return [];
     const otherTone = toneFor(other);
     if (otherTone.instrument !== tone.instrument) return [];
-    if (VOICE_POLYPHONY[tone.instrument] && otherTone.row !== tone.row) return [];
+    if (tone.polyphonic && otherTone.row !== tone.row) return [];
     return soundingStep(other.step) === step ? [{ sourceId: other.id, step }] : [];
   });
 }

@@ -194,6 +194,34 @@ test("the seed has no conflicting or silent lights and projection never changes 
   const before = structuredClone(document);
   const score = compose(document);
   expect(document).toEqual(createConstellation());
+  expect(
+    document.sources.map((source) => [
+      toneFor(source).instrument,
+      toneFor(source).note.name,
+      source.step,
+    ]),
+  ).toEqual([
+    ["mallet", "C4", 0],
+    ["mallet", "E4", 4],
+    ["mallet", "E4", 8],
+    ["mallet", "E4", 12],
+    ["mallet", "D4", 16],
+    ["mallet", "E4", 20],
+    ["mallet", "E4", 24],
+    ["mallet", "E4", 28],
+    ["keys", "E5", 2],
+    ["keys", "D5", 6],
+    ["keys", "C5", 10],
+    ["keys", "B4", 14],
+    ["keys", "C5", 18],
+    ["keys", "G4", 22],
+    ["keys", "A4", 26],
+    ["keys", "E5", 30],
+    ["bass", "C2", 0],
+    ["bass", "G2", 16],
+    ["glass", "G5", 10],
+    ["glass", "C6", 26],
+  ]);
   expect(score).toHaveLength(document.sources.length);
   expect(new Set(score.map((note) => note.instrument))).toEqual(
     new Set(["bass", "mallet", "keys", "glass"]),
