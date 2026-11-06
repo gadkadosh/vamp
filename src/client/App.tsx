@@ -116,19 +116,8 @@ export function App() {
       if (!menuAnchor.current?.contains(event.target as Node)) setMenu(false);
     }
 
-    function keyDown(event: globalThis.KeyboardEvent) {
-      if (event.key === "Escape") {
-        setMenu(false);
-        menuTrigger.current?.focus();
-      }
-    }
-
     document.addEventListener("pointerdown", outside);
-    document.addEventListener("keydown", keyDown);
-    return () => {
-      document.removeEventListener("pointerdown", outside);
-      document.removeEventListener("keydown", keyDown);
-    };
+    return () => document.removeEventListener("pointerdown", outside);
   }, [menu]);
 
   function apply(next: History) {
@@ -261,6 +250,28 @@ export function App() {
 
   const onShortcut = useEffectEvent((event: globalThis.KeyboardEvent) => {
     if (guide.current?.open) return;
+    if (event.key === "Escape") {
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey ||
+        event.repeat
+      )
+        return;
+      if (menu) {
+        event.preventDefault();
+        setMenu(false);
+        menuTrigger.current?.focus();
+      } else if (cancelGesture()) {
+        event.preventDefault();
+      } else if (selected) {
+        event.preventDefault();
+        setSelected(null);
+      }
+      return;
+    }
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
       event.preventDefault();
       if (event.shiftKey) redo();

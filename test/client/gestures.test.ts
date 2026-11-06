@@ -531,6 +531,107 @@ test("the surface has a single note tab stop and Escape restores the empty selec
   ).toBe(true);
 });
 
+test.each(["body", '[aria-label="Mute audio"]', '[aria-label="Play loop"]'])(
+  "Escape deselects globally without moving focus from %s or editing the music",
+  (selector) => {
+    const before = notes();
+    act(() => element('[data-light="1"]').focus());
+    const target = element(selector);
+    if (target === document.body) target.tabIndex = -1;
+    act(() => target.focus());
+    expect(key("Escape").defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(target);
+    expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("false");
+    expect(document.querySelector(".note-tools")).toBeNull();
+    expect(surface().tabIndex).toBe(0);
+    expect(notes()).toEqual(before);
+    expect(button("Undo").disabled).toBe(true);
+    expect(key("Escape").defaultPrevented).toBe(false);
+  },
+);
+
+test("Escape from the selected note's remove control returns focus to the surface", () => {
+  act(() => element('[data-light="1"]').focus());
+  act(() => button("Remove selected note").focus());
+  expect(key("Escape").defaultPrevented).toBe(true);
+  expect(document.querySelector(".note-tools")).toBeNull();
+  expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("false");
+  expect(document.activeElement).toBe(surface());
+});
+
+test.each(["surface", "outside"])(
+  "Escape cancels a gesture before deselecting, with focus %s the canvas",
+  (focus) => {
+    const before = notes();
+    act(() => element('[data-light="1"]').focus());
+    paint();
+    if (focus === "outside") act(() => button("Mute audio").focus());
+    const target = document.activeElement;
+    expect(notes()).toHaveLength(before.length + 2);
+    expect(key("Escape").defaultPrevented).toBe(true);
+    expect(notes()).toEqual(before);
+    expectFinished();
+    expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("true");
+    expect(button("Undo").disabled).toBe(true);
+    if (focus === "outside") expect(document.activeElement).toBe(target);
+    pointer("pointerup", 8, 10);
+    expect(notes()).toEqual(before);
+    key("Escape", { repeat: true });
+    expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("true");
+    key("Escape");
+    expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("false");
+  },
+);
+
+test("Escape closes sketch options before deselecting and ignores held repeats", () => {
+  act(() => element('[data-light="1"]').focus());
+  click(button("Sketch options"));
+  act(() => element(".sketch-menu button").focus());
+  expect(key("Escape").defaultPrevented).toBe(true);
+  expect(document.querySelector(".sketch-menu")).toBeNull();
+  expect(document.activeElement).toBe(button("Sketch options"));
+  expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("true");
+  key("Escape", { repeat: true });
+  expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("true");
+  key("Escape");
+  expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("false");
+  expect(document.activeElement).toBe(button("Sketch options"));
+});
+
+test("Escape leaves the help dialog's native dismissal alone without deselecting", () => {
+  act(() => element('[data-light="1"]').focus());
+  click(element(".help-button"));
+  act(() => button("Close guide").focus());
+  expect(element<HTMLDialogElement>("dialog").open).toBe(true);
+  expect(key("Escape").defaultPrevented).toBe(false);
+  expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("true");
+  // happy-dom does not synthesize native dialog dismissal from keyboard events.
+  click(button("Close guide"));
+  expect(element<HTMLDialogElement>("dialog").open).toBe(false);
+  act(() => button("Mute audio").focus());
+  key("Escape");
+  expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("false");
+});
+
+test.each([{ ctrlKey: true }, { metaKey: true }, { altKey: true }, { isComposing: true }])(
+  "Escape leaves modified or composing key events alone: %j",
+  (modifiers) => {
+    act(() => element('[data-light="1"]').focus());
+    expect(key("Escape", modifiers).defaultPrevented).toBe(false);
+    expectSelected(1);
+  },
+);
+
+test("Escape respects events already handled by another control", () => {
+  act(() => element('[data-light="1"]').focus());
+  const target = button("Mute audio");
+  act(() => target.focus());
+  target.addEventListener("keydown", (event) => event.preventDefault(), { once: true });
+  key("Escape");
+  expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("true");
+  expect(document.activeElement).toBe(target);
+});
+
 test("the selected note shows only its pitch and a working remove button; undo restores it", () => {
   const before = notes();
   enterSurface();
