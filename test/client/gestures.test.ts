@@ -842,24 +842,57 @@ test("Play stays disabled until audio startup completes", async () => {
   expect(frames.size).toBe(1);
 });
 
-test("failed playback transitions restore the controls and allow retry", async () => {
-  vi.spyOn(TestAudioContext.prototype, "resume").mockRejectedValueOnce(new Error("Cannot resume"));
-  await act(async () => button("Play loop").click());
-  expect(button("Play loop").disabled).toBe(false);
-  expect(element('[role="status"]').textContent).toContain("Audio couldn’t start");
-  expect(frames.size).toBe(0);
-  await act(async () => button("Play loop").click());
+test.each(["button", "Space"])(
+  "failed playback transitions allow retry using %s",
+  async (control) => {
+    async function toggle(label: string) {
+      await act(async () => {
+        if (control === "Space") key(" ");
+        else button(label).click();
+      });
+    }
+
+    vi.spyOn(TestAudioContext.prototype, "resume").mockRejectedValueOnce(
+      new Error("Cannot resume"),
+    );
+    await toggle("Play loop");
+    expect(button("Play loop").disabled).toBe(false);
+    expect(element('[role="status"]').textContent).toContain("Audio couldn’t start");
+    expect(frames.size).toBe(0);
+    await toggle("Play loop");
+    const context = TestAudioContext.instances[0];
+    vi.spyOn(context, "suspend").mockRejectedValueOnce(new Error("Cannot suspend"));
+    await toggle("Pause loop");
+    expect(button("Pause loop").disabled).toBe(false);
+    expect(element('[role="status"]').textContent).toContain("Audio couldn’t pause");
+    expect(context.state).toBe("running");
+    expect(frames.size).toBe(1);
+    await toggle("Pause loop");
+    expect(button("Play loop").getAttribute("aria-pressed")).toBe("false");
+    expect(context.state).toBe("suspended");
+    expect(frames.size).toBe(0);
+  },
+);
+
+test("Space respects a pending pause across edits and can resume after it completes", async () => {
+  await act(async () => key(" "));
   const context = TestAudioContext.instances[0];
-  vi.spyOn(context, "suspend").mockRejectedValueOnce(new Error("Cannot suspend"));
-  await act(async () => button("Pause loop").click());
-  expect(button("Pause loop").disabled).toBe(false);
-  expect(element('[role="status"]').textContent).toContain("Audio couldn’t pause");
-  expect(context.state).toBe("running");
-  expect(frames.size).toBe(1);
-  await act(async () => button("Pause loop").click());
-  expect(button("Play loop").getAttribute("aria-pressed")).toBe("false");
+  const pending = deferred();
+  const suspend = vi.spyOn(context, "suspend").mockImplementationOnce(async () => {
+    await pending.promise;
+    context.state = "suspended";
+  });
+  key(" ");
+  expect(button("Pause loop").disabled).toBe(true);
+  add(3, 9);
+  key(" ");
+  expect(suspend).toHaveBeenCalledTimes(1);
+  await act(async () => pending.resolve());
+  expect(button("Play loop").disabled).toBe(false);
   expect(context.state).toBe("suspended");
-  expect(frames.size).toBe(0);
+  await act(async () => key(" "));
+  expect(button("Pause loop").disabled).toBe(false);
+  expect(context.state).toBe("running");
 });
 
 test("mute before Play stays silent while playback and animation run independently", async () => {
