@@ -7,7 +7,7 @@ import {
   STEP_SECONDS,
 } from "../src/client/score";
 import type { InstrumentId, TimedNote } from "../src/client/score";
-import { compose } from "../src/client/pattern";
+import { compose, TONES } from "../src/client/pattern";
 import type { Pattern } from "../src/client/pattern";
 import { Sequencer } from "../src/client/sequencer";
 import { carriers, channel, deferred, plucks, routesTo, TestAudioContext } from "./audio-context";
@@ -66,13 +66,14 @@ const floatingLight: Pattern = {
 };
 
 test.each([
-  ["bass", 2, 2.8, [0.13]],
-  ["mallet", 7, 0.9, [0.12]],
-  ["keys", 11, 2.43, [0.065, 0.014, 0.0045, 0.0015]],
-  ["glass", 17, 2.83, [0.035, 0.008, 0.002]],
+  ["bass", "E2", 2.8, [0.13]],
+  ["mallet", "D4", 0.9, [0.12]],
+  ["keys", "A4", 2.43, [0.065, 0.014, 0.0045, 0.0015]],
+  ["glass", "A5", 2.83, [0.035, 0.008, 0.002]],
 ] as const)(
   "%s retains its envelope peaks, onset, and natural decay",
-  async (id, tone, seconds, peaks) => {
+  async (id, name, seconds, peaks) => {
+    const tone = TONES.findIndex((tone) => tone.instrument === id && tone.note.name === name);
     const { context } = await start(() => compose({ notes: [{ id: 1, step: 0, tone }] }));
     runUntil(context, 3.2);
     const voices = sources(context, id);
@@ -92,8 +93,27 @@ test.each([
   },
 );
 
+test.each([
+  ["mallet", "D3", 50],
+  ["mallet", "E3", 52],
+  ["mallet", "G3", 55],
+  ["mallet", "A3", 57],
+  ["keys", "G5", 79],
+  ["glass", "D6", 86],
+  ["glass", "E6", 88],
+] as const)("%s %s is playable and schedules at its expected frequency", async (id, name, midi) => {
+  const tone = TONES.findIndex((tone) => tone.instrument === id && tone.note.name === name);
+  expect(tone).toBeGreaterThanOrEqual(0);
+  const { context } = await start(() => compose({ notes: [{ id: 1, step: 0, tone }] }));
+  const voices = carriers(context, id);
+  expect(voices).toHaveLength(id === "keys" ? 4 : id === "glass" ? 3 : 1);
+  expect(voices[0].frequency.value).toBeCloseTo(440 * 2 ** ((midi - 69) / 12), 10);
+  expect(voices[0].start).toHaveBeenCalledExactlyOnceWith(0.05);
+});
+
 test("felt lights retain their partial tuning", async () => {
-  const { context } = await start(() => compose({ notes: [{ id: 1, step: 0, tone: 11 }] }));
+  const tone = TONES.findIndex((tone) => tone.instrument === "keys" && tone.note.name === "A4");
+  const { context } = await start(() => compose({ notes: [{ id: 1, step: 0, tone }] }));
   const frequency = INSTRUMENTS.keys.notes[row("keys", "A4")].frequency;
   expect(carriers(context, "keys").map((source) => source.frequency.value)).toEqual(
     [1, 2.003, 3.009, 4.02].map((ratio) => frequency * ratio),

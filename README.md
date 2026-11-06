@@ -36,9 +36,18 @@ Dragging is a local preview: the original music continues until a valid release,
 
 Keyboard: Tab into the space. **Page Up / Page Down** select the previous/next light in time order, with lower pitches first at the same beat, and wrap around the loop. On Mac laptops, use Fn + ↑ / ↓. Arrows select the first light if none is selected, then move the selection one rhythmic step left/right or one pitch up/down. Enter adds a light. Keyboard focus follows the selected light and uses a small frame; pointer selection does not show it. Delete/Backspace removes; Escape deselects. **Space** plays or pauses from anywhere, including the surface and selected lights, except while typing, using another focused control, or viewing the help dialog. Holding Space does not repeatedly toggle playback. The surface has one Tab stop: the selected light, or the space itself when nothing is selected. Tab then visits the selected note’s remove button and leaves the surface. Navigation does not change the music or undo/redo history. Individual lights expose descriptive accessible names with their material, pitch, and beat position.
 
-The musical rules are deterministic. A single ascending tone axis passes through bass, mallet, felt keys, and glass materials, with color following material. It uses a subset of each voice’s original range so moving higher never drops the pitch when crossing a material boundary. The starting pattern adapts the original seed phrases to this axis.
+The musical rules are deterministic. A single ascending tone axis passes through bass, mallet, felt keys, and glass materials, with color following material. Each voice occupies a distinct pitch range, so moving higher never drops the pitch when crossing a material boundary. The starting pattern adapts the original seed phrases to this axis.
 
-Lights land on 32 timing positions and 19 pitches, without a preallocated number of dots. **Felt keys are polyphonic**: different notes at the same beat form a chord, and overlapping notes decay independently. Mallet and glass also permit chords.
+Lights land on 32 timing positions and 25 pitches, without a preallocated number of dots:
+
+| Material     | Playable pitches, low to high  |
+| ------------ | ------------------------------ |
+| Plucked bass | C2, D2, E2, G2, A2, C3         |
+| Mallet       | D3, E3, G3, A3, C4, D4, E4     |
+| Felt keys    | F4, G4, A4, B4, C5, D5, E5, G5 |
+| Glass chimes | A5, C6, D6, E6                 |
+
+**Felt keys are polyphonic**: different notes at the same beat form a chord, and overlapping notes decay independently. Mallet and glass also permit chords.
 
 **Bass has one note per rhythmic step.** Occupied landing points turn red and highlight the conflicting light. A new conflicting placement is rejected; a conflicting drag returns to its previous location. Identical sounds at the same beat are also rejected rather than creating silent duplicates. These rules apply to placement, dragging, keyboard moves, and scattering. A conflicting operation leaves every existing light unchanged and creates no undo entry. No light is silently ignored, and nothing is automatically shifted to another beat.
 
