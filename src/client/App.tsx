@@ -13,7 +13,6 @@ import type { CollisionFeedback, Pattern, Placement, Note } from "./pattern";
 import { Sequencer } from "./sequencer";
 import { DEFAULT_VOLUME, EMPTY_PLAYBACK, INSTRUMENTS } from "./score";
 
-type PlaybackStatus = "paused" | "starting" | "playing" | "pausing";
 type History = { present: Pattern; past: Pattern[]; future: Pattern[] };
 type IconName =
   | "play"
@@ -90,10 +89,8 @@ export function App() {
   const [selectedId, setSelected] = useState<number | null>(null);
   const selected = pattern.notes.find((note) => note.id === selectedId);
   const nextNote = useRef(Math.max(...pattern.notes.map((note) => note.id), 0) + 1);
-  const playbackStatusRef = useRef<PlaybackStatus>("paused");
-  const [playbackStatus, setPlaybackStatus] = useState<PlaybackStatus>("paused");
-  const playing = playbackStatus === "playing" || playbackStatus === "pausing";
-  const busy = playbackStatus === "starting" || playbackStatus === "pausing";
+  const [playing, setPlaying] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [muted, setMuted] = useState(false);
   const [help, setHelp] = useState(false);
   const [menu, setMenu] = useState(false);
@@ -273,31 +270,25 @@ export function App() {
     return () => window.removeEventListener("keydown", keyDown);
   }, []);
 
-  function updatePlaybackStatus(status: PlaybackStatus) {
-    // The ref guards same-turn input before React renders the disabled button.
-    playbackStatusRef.current = status;
-    setPlaybackStatus(status);
-  }
-
   async function togglePlayback() {
     const sequencer = sequencerRef.current;
-    const previous = playbackStatusRef.current;
-    if (!sequencer || previous === "starting" || previous === "pausing") return;
-    updatePlaybackStatus(previous === "playing" ? "pausing" : "starting");
+    if (!sequencer || busy) return;
+    setBusy(true);
     setError("");
     try {
-      if (previous === "playing") await sequencer.pause();
+      if (playing) await sequencer.pause();
       else await sequencer.play();
       if (sequencerRef.current !== sequencer) return;
-      updatePlaybackStatus(previous === "playing" ? "paused" : "playing");
+      setPlaying(!playing);
     } catch {
       if (sequencerRef.current !== sequencer) return;
-      updatePlaybackStatus(previous);
       setError(
-        previous === "playing"
+        playing
           ? "Audio couldn’t pause. Please try Pause again."
           : "Audio couldn’t start. Please try Play again.",
       );
+    } finally {
+      if (sequencerRef.current === sequencer) setBusy(false);
     }
   }
 

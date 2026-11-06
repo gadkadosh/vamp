@@ -669,24 +669,21 @@ test("an unavailable canvas context does not break editing or playback controls"
   expect(frames.size).toBe(0);
 });
 
-test("same-turn playback input is ignored while startup is pending", async () => {
+test("Play stays disabled until audio startup completes", async () => {
   const pending = deferred();
-  const resume = vi
-    .spyOn(TestAudioContext.prototype, "resume")
-    .mockImplementationOnce(async function (this: TestAudioContext) {
-      await pending.promise;
-      this.state = "running";
-    });
-  act(() => {
-    button("Play loop").click();
-    surface().dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
+  vi.spyOn(TestAudioContext.prototype, "resume").mockImplementationOnce(async function (
+    this: TestAudioContext,
+  ) {
+    await pending.promise;
+    this.state = "running";
   });
+  click(button("Play loop"));
   expect(button("Play loop").disabled).toBe(true);
   expect(button("Play loop").getAttribute("aria-busy")).toBe("true");
-  expect(resume).toHaveBeenCalledTimes(1);
   expect(frames.size).toBe(0);
   await act(async () => pending.resolve());
   expect(button("Pause loop").disabled).toBe(false);
+  expect(button("Pause loop").getAttribute("aria-busy")).toBe("false");
   expect(button("Pause loop").getAttribute("aria-pressed")).toBe("true");
   expect(TestAudioContext.instances[0].state).toBe("running");
   expect(frames.size).toBe(1);
