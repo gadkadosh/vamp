@@ -531,11 +531,12 @@ test("the surface has a single note tab stop and Escape restores the empty selec
   ).toBe(true);
 });
 
-test("the selected note's remove button deletes only that note and undo restores it", () => {
+test("the selected note shows only its pitch and a working remove button; undo restores it", () => {
   const before = notes();
   enterSurface();
   key("PageUp");
   expectSelected(16);
+  expect(element(".note-tools").textContent).toBe("E5");
   click(button("Remove selected note"));
   expect(document.querySelector('[data-light="16"]')).toBeNull();
   expect(notes()).toEqual(before.filter((_, index) => index !== 15));

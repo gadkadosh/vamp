@@ -10,7 +10,7 @@ import {
 } from "./pattern";
 import type { CollisionFeedback, Pattern, Placement, Note } from "./pattern";
 import { Sequencer } from "./sequencer";
-import { DEFAULT_VOLUME, EMPTY_PLAYBACK, INSTRUMENTS } from "./score";
+import { DEFAULT_VOLUME, EMPTY_PLAYBACK } from "./score";
 
 type History = { present: Pattern; past: Pattern[]; future: Pattern[] };
 type IconName = "play" | "pause" | "undo" | "redo" | "clear" | "more" | "close" | "sound" | "mute";
@@ -405,15 +405,7 @@ export function App() {
           getPlayback={getPlayback}
           renderSelection={(note, focusSurface) => (
             <>
-              <span
-                className="selected-swatch"
-                style={{ background: toneFor(note).color, color: toneFor(note).color }}
-                aria-hidden="true"
-              />
               <span className="selected-pitch">{toneFor(note).note.name}</span>
-              <span className="selected-material">
-                {INSTRUMENTS[toneFor(note).instrument].name}
-              </span>
               <button
                 className="icon-button"
                 title="Remove · Delete"
