@@ -1,4 +1,4 @@
-import { INSTRUMENTS, INSTRUMENT_IDS, pitchRow, STEP_COUNT } from "./score";
+import { INSTRUMENTS, INSTRUMENT_IDS, pitchIndex, STEP_COUNT } from "./score";
 import type { InstrumentId, TimedNote } from "./score";
 
 // Instrument order, exposed pitches, and colors on the ascending interface axis.
@@ -23,7 +23,7 @@ export const INSTRUMENT_LAYOUT = [
 export const TONES = INSTRUMENT_LAYOUT.flatMap((entry) => {
   const instrument = INSTRUMENTS[entry.instrument];
   return entry.notes.map((name) => {
-    const row = pitchRow(entry.instrument, name);
+    const row = pitchIndex(entry.instrument, name);
     return {
       instrument: entry.instrument,
       polyphonic: instrument.polyphonic,
@@ -64,7 +64,7 @@ export function createPattern(): Pattern {
     );
     if (!candidates.length) throw new Error(`No instrument layout for ${instrumentId}`);
     for (const [name, step] of instrument.seed) {
-      const frequency = instrument.notes[pitchRow(instrumentId, name)].frequency;
+      const frequency = instrument.notes[pitchIndex(instrumentId, name)].frequency;
       const closest = candidates.reduce((a, b) =>
         Math.abs(a.note.frequency - frequency) <= Math.abs(b.note.frequency - frequency) ? a : b,
       );

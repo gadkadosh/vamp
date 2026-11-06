@@ -71,10 +71,10 @@ export const INSTRUMENTS = {
 export type InstrumentId = keyof typeof INSTRUMENTS;
 export const INSTRUMENT_IDS = Object.keys(INSTRUMENTS) as readonly InstrumentId[];
 
-export function pitchRow(instrument: InstrumentId, name: string): number {
-  const row = INSTRUMENTS[instrument].notes.findIndex((note) => note.name === name);
-  if (row < 0) throw new Error(`Unknown pitch ${name} for ${instrument}`);
-  return row;
+export function pitchIndex(instrument: InstrumentId, name: string): number {
+  const index = INSTRUMENTS[instrument].notes.findIndex((note) => note.name === name);
+  if (index < 0) throw new Error(`Unknown pitch ${name} for ${instrument}`);
+  return index;
 }
 
 export type TimedNote = {

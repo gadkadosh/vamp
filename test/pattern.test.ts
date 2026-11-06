@@ -11,7 +11,7 @@ import {
 } from "../src/client/pattern";
 import type { Pattern, Note } from "../src/client/pattern";
 import { layoutNotes, locate, pick, SETTLE_MS } from "../src/client/space";
-import { INSTRUMENTS, pitchRow, STEP_COUNT } from "../src/client/score";
+import { INSTRUMENTS, pitchIndex, STEP_COUNT } from "../src/client/score";
 
 const light: Note = { id: 1, step: 3, tone: 7 };
 const documentOf = (...notes: Note[]): Pattern => ({ notes });
@@ -55,10 +55,10 @@ test("draft tone positions are continuous while sounding pitches ascend through 
 });
 
 test("pitch lookup rejects an invalid instrument/pitch mapping with a clear error", () => {
-  expect(pitchRow("mallet", "A4")).toBe(0);
-  expect(INSTRUMENTS.mallet.notes[pitchRow("mallet", "A4")].frequency).toBe(440);
-  expect(() => pitchRow("mallet", "C2")).toThrow("Unknown pitch C2 for mallet");
-  expect(() => pitchRow("keys", "not a pitch")).toThrow("Unknown pitch not a pitch for keys");
+  expect(pitchIndex("mallet", "A4")).toBe(0);
+  expect(INSTRUMENTS.mallet.notes[pitchIndex("mallet", "A4")].frequency).toBe(440);
+  expect(() => pitchIndex("mallet", "C2")).toThrow("Unknown pitch C2 for mallet");
+  expect(() => pitchIndex("keys", "not a pitch")).toThrow("Unknown pitch not a pitch for keys");
 });
 
 test("landing snaps both timing and pitch, wraps the loop seam, and is idempotent", () => {
