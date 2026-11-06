@@ -262,9 +262,20 @@ export function PointSpace(props: Props) {
   }
   function pointerDown(event: PointerEvent<HTMLDivElement>) {
     if (gesture.current || (event.button !== 0 && event.button !== 2)) return;
-    const target = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-light]");
-    const id = target ? Number(target.dataset.light) : null;
-    const source = props.document.sources.find((source) => source.id === id);
+    const position = coordinates(event);
+    // Overlapping buttons receive events in DOM order, not by proximity to the visible lights.
+    const points = layoutSources(props.document.sources, size, motion.current, performance.now());
+    let nearest: (typeof points)[number] | undefined;
+    let distance = 18; // Match the 36px circular hit targets.
+    for (const point of points) {
+      const gap = Math.hypot(position.x - point.position.x, position.y - point.position.y);
+      if (gap <= distance) {
+        nearest = point;
+        distance = gap;
+      }
+    }
+    const source = nearest?.source;
+    const target = source ? elements.current.get(source.id) : null;
     if (event.button === 2) {
       if (source) {
         event.preventDefault();
@@ -272,14 +283,9 @@ export function PointSpace(props: Props) {
       }
       return;
     }
-    const position = coordinates(event);
-    const bounds = surface.current!.getBoundingClientRect();
-    const hit = target?.getBoundingClientRect();
-    const center = hit
-      ? { x: hit.left + hit.width / 2 - bounds.left, y: hit.top + hit.height / 2 - bounds.top }
-      : position;
+    const center = nearest?.position ?? position;
     event.preventDefault();
-    const paint = event.shiftKey && id === null;
+    const paint = event.shiftKey && !source;
     gesture.current = {
       edit: props.onBegin(cancelPreview),
       pointer: event.pointerId,

@@ -18,6 +18,7 @@ let preference: EventTarget & { matches: boolean };
 let observers: Map<Element, (entries: { contentRect: typeof size }[]) => void>;
 
 beforeEach(async () => {
+  size.width = 900;
   vi.useFakeTimers();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   preference = Object.assign(new EventTarget(), { matches: false });
@@ -569,6 +570,58 @@ test("switching to pointer selection does not retain the keyboard focus treatmen
   pointer("pointerup", 0, 6);
   expect(document.activeElement).toBe(surface());
   expect(light.getAttribute("aria-pressed")).toBe("false");
+});
+
+function compactNeighbors() {
+  act(() => {
+    size.width = 390;
+    observers.get(surface())!([{ contentRect: size }]);
+    element('[data-light="3"]').focus();
+  });
+  for (let step = 0; step < 3; step++) key("ArrowLeft");
+  return element('[data-light="3"]');
+}
+
+test.each(["select", "drag", "remove"])(
+  "overlapping mobile targets %s the nearest note, not the topmost button",
+  (action) => {
+    const topmost = compactNeighbors();
+    const neighbor = element('[data-light="2"]');
+    const before = notes();
+    const center = locate({ id: 2, step: 4, tone: 8 }, size);
+    const hit = topmost.getBoundingClientRect();
+    expect(Math.hypot(center.x - (hit.x + 18), center.y - (hit.y + 18))).toBeLessThan(18);
+    // The browser delivers this point to the later, overlapping button, not note 2.
+    pointer("pointerdown", 4, 8, topmost, { button: action === "remove" ? 2 : 0 });
+    if (action === "remove") {
+      expect(document.querySelector('[data-light="2"]')).toBeNull();
+      expect(notes()).toEqual(before.filter((_, index) => index !== 1));
+      return;
+    }
+    if (action === "drag") pointer("pointermove", 2, 8);
+    pointer("pointerup", action === "drag" ? 2 : 4, 8);
+    expect(document.activeElement).toBe(neighbor);
+    expect(neighbor.getAttribute("aria-pressed")).toBe("true");
+    expect(topmost.getAttribute("aria-label")).toBe(before[2]);
+    if (action === "drag")
+      expect(neighbor.getAttribute("aria-label")).toContain("beat position 3 of 32");
+    else expect(notes()).toEqual(before);
+  },
+);
+
+test("mobile pointer hits follow a settling note rather than its committed landing point", () => {
+  const light = compactNeighbors();
+  pointer("pointerdown", 5, 8, light);
+  pointer("pointermove", 4.4, 8);
+  pointer("pointerup", 4.4, 8);
+  // The occupied landing at step 4 sends it back to step 5, but it is still near step 4.
+  key("Escape");
+  frame(18);
+  pointer("pointerdown", 4.4, 8);
+  pointer("pointerup", 4.4, 8);
+  expect(document.activeElement).toBe(light);
+  expect(light.getAttribute("aria-pressed")).toBe("true");
+  expect(light.getAttribute("aria-label")).toContain("beat position 6 of 32");
 });
 
 test("keyboard input outside the surface never steals focus or changes the selected note", () => {
