@@ -1,15 +1,21 @@
 import { INSTRUMENTS, STEP_COUNT, VOICE_POLYPHONY } from "./score";
 import type { TimedNote } from "./score";
 
-const MATERIALS = [
-  { instrument: "bass", color: "#94bfa5", notes: ["C2", "D2", "E2", "G2", "A2", "C3"] },
-  { instrument: "mallet", color: "#e9bd7e", notes: ["C4", "D4", "E4"] },
+export const MATERIALS = [
+  {
+    instrument: "bass",
+    name: "Bass",
+    color: "#6dcbb0",
+    notes: ["C2", "D2", "E2", "G2", "A2", "C3"],
+  },
+  { instrument: "mallet", name: "Mallet", color: "#efbb67", notes: ["C4", "D4", "E4"] },
   {
     instrument: "keys",
-    color: "#e5a599",
+    name: "Felt keys",
+    color: "#e99db3",
     notes: ["F4", "G4", "A4", "B4", "C5", "D5", "E5"],
   },
-  { instrument: "glass", color: "#a3bfe7", notes: ["G5", "A5", "C6"] },
+  { instrument: "glass", name: "Glass", color: "#a5b4f6", notes: ["G5", "A5", "C6"] },
 ] as const;
 export const TONES = MATERIALS.flatMap((material) => {
   const instrument = INSTRUMENTS.find(({ id }) => id === material.instrument)!;

@@ -1,38 +1,45 @@
 import { expect, test } from "vite-plus/test";
 import { drawSpace } from "../src/client/drawSpace";
 import type { Scene } from "../src/client/drawSpace";
-import { compose, snapSource } from "../src/client/playground";
+import { compose, snapSource, toneFor } from "../src/client/playground";
+import { STEP_SECONDS } from "../src/client/score";
 import { fieldBounds, layoutSources, locate } from "../src/client/space";
 
 const size = { width: 900, height: 600 };
 const document: Scene["document"] = { sources: [{ id: 1, step: 2, tone: 7 }] };
 const candidate = { id: 2, step: 12.31, tone: 11.18 };
 
+type Gradient = { stops: { offset: number; color: string }[] };
+type Circle = { x: number; y: number; radius: number };
 function recordingContext() {
   type Point = { x: number; y: number };
-  const strokes: {
-    points: Point[];
-    dash: number[];
-    color: unknown;
-    width: number;
-    alpha: number;
-  }[] = [];
-  const gradients: { stops: { offset: number; color: string }[] }[] = [];
-  const labels: string[] = [];
-  const circles: { x: number; y: number; radius: number }[] = [];
-  const fills: { alpha: number; circle: (typeof circles)[number] | undefined }[] = [];
+  const strokes: { points: Point[]; circle: Circle | null; dash: number[]; color: string }[] = [];
+  const fills: { circle: Circle | null; color: string | Gradient }[] = [];
+  const rectangles: number[][] = [];
   let points: Point[] = [],
+    circle: Circle | null = null,
     dash: number[] = [];
+  const gradient = (): Gradient & { addColorStop: (offset: number, color: string) => void } => ({
+    stops: [],
+    addColorStop(offset, color) {
+      this.stops.push({ offset, color });
+    },
+  });
   const context = {
     strokeStyle: "",
+    fillStyle: "" as string | Gradient,
     lineWidth: 1,
-    globalAlpha: 1,
-    clearRect() {},
     fill() {
-      fills.push({ alpha: this.globalAlpha, circle: circles.at(-1) });
+      const color =
+        typeof this.fillStyle === "string" ? this.fillStyle : { stops: [...this.fillStyle.stops] };
+      fills.push({ circle, color });
+    },
+    fillRect(...bounds: number[]) {
+      rectangles.push(bounds);
     },
     beginPath() {
       points = [];
+      circle = null;
     },
     moveTo(x: number, y: number) {
       points.push({ x, y });
@@ -44,38 +51,19 @@ function recordingContext() {
       dash = value;
     },
     stroke() {
-      strokes.push({
-        points: [...points],
-        dash: [...dash],
-        color: this.strokeStyle,
-        width: this.lineWidth,
-        alpha: this.globalAlpha,
-      });
-    },
-    fillText(text: string) {
-      labels.push(text);
+      strokes.push({ points: [...points], circle, dash: [...dash], color: this.strokeStyle });
     },
     arc(x: number, y: number, radius: number) {
-      circles.push({ x, y, radius });
+      circle = { x, y, radius };
     },
-    createRadialGradient() {
-      const gradient = {
-        stops: [] as { offset: number; color: string }[],
-        addColorStop(offset: number, color: string) {
-          this.stops.push({ offset, color });
-        },
-      };
-      gradients.push(gradient);
-      return gradient;
-    },
+    createRadialGradient: gradient,
+    createLinearGradient: gradient,
   };
   return {
     context: context as unknown as Parameters<typeof drawSpace>[0],
     strokes,
-    labels,
-    circles,
     fills,
-    gradients,
+    rectangles,
   };
 }
 
@@ -84,11 +72,12 @@ const scene: Scene = {
   score: compose(document),
   selected: null,
   playing: false,
+  reducedMotion: false,
   preview: null,
   feedback: null,
 };
 
-function render(state: Scene, viewport = size, progress: number | null = null) {
+function render(state: Scene, viewport = size, progress: number | null = null, now = 0) {
   const recorded = recordingContext();
   drawSpace(
     recorded.context,
@@ -96,104 +85,134 @@ function render(state: Scene, viewport = size, progress: number | null = null) {
     viewport,
     progress,
     layoutSources(state.document.sources, viewport),
-    0,
+    now,
   );
   return recorded;
 }
 
-test("placing or dragging shows snapped guides and a landing ring without a note-name label or musical edits", () => {
+function core(recorded: ReturnType<typeof render>) {
+  return recorded.fills.at(-1);
+}
+
+test("an empty field has no decorative particles, glows, or permanent guides", () => {
+  expect(render(scene).fills.length).toBeGreaterThan(0);
+  const recorded = render({ ...scene, document: { sources: [] }, score: [] });
+  expect(recorded.fills).toEqual([]);
+  expect(recorded.strokes).toEqual([]);
+  expect(recorded.rectangles).toEqual([]);
+});
+
+test.each([390, 900])(
+  "idle lights retain their material color in centered, circular cores at width %s",
+  (width) => {
+    const viewport = { width, height: 600 };
+    const source = document.sources[0];
+    const recorded = render(scene, viewport);
+    const color = toneFor(source).color;
+    expect(recorded.fills).toHaveLength(4); // Three diffuse glows and one core, no background lights.
+    expect(core(recorded)).toEqual({
+      circle: { ...locate(source, viewport), radius: width < 520 ? 3.8 : 4.2 },
+      color: {
+        stops: [
+          { offset: 0, color },
+          { offset: 0.65, color },
+          { offset: 1, color: `${color}b3` },
+        ],
+      },
+    });
+    expect(recorded.strokes).toEqual([]);
+  },
+);
+
+test("selection intensifies the material without adding a ring or moving the light", () => {
+  const idle = render(scene),
+    selected = render({ ...scene, selected: 1 });
+  const color = toneFor(document.sources[0]).color;
+  expect(selected.strokes).toEqual([]);
+  expect(selected.fills[1]).toMatchObject({
+    circle: { radius: 39 },
+    color: { stops: [{ offset: 0, color: `${color}26` }, expect.anything(), expect.anything()] },
+  });
+  expect(idle.fills[1]).toMatchObject({
+    color: { stops: [{ offset: 0, color: `${color}12` }, expect.anything(), expect.anything()] },
+  });
+  expect(core(selected)?.circle).toEqual({
+    ...locate(document.sources[0], size),
+    radius: 4.2 * 1.05,
+  });
+  expect(core(selected)?.color).toEqual(core(idle)?.color);
+});
+
+test("a sounding light blooms, then returns to rest; pausing holds the bloom", () => {
+  const onset = render({ ...scene, playing: true }, size, 2);
+  const paused = render(scene, size, 2);
+  const later = render({ ...scene, playing: true }, size, 2 + 2 / STEP_SECONDS);
+  const idle = render(scene);
+  expect(onset.fills[0].circle?.radius).toBe(225);
+  expect(onset.fills[1].circle?.radius).toBe(87);
+  expect(onset.fills).toEqual(paused.fills);
+  expect(onset.strokes.filter(({ circle }) => circle)).toHaveLength(1);
+  expect(later.fills).toEqual(idle.fills);
+  expect(onset.rectangles).toHaveLength(1);
+  expect(paused.rectangles).toEqual([]);
+});
+
+test("reduced motion uses illumination, not an expanding wave, growing core, or moving sweep", () => {
+  const onset = render({ ...scene, playing: true, reducedMotion: true }, size, 2);
+  const idle = render({ ...scene, reducedMotion: true });
+  expect(core(onset)?.circle).toEqual(core(idle)?.circle);
+  expect(onset.fills[1].circle?.radius).toBeGreaterThan(idle.fills[1].circle?.radius ?? Infinity);
+  expect(onset.strokes).toEqual([]);
+  expect(onset.rectangles).toEqual([]);
+});
+
+test("placement reveals both full snapped guides and a landing point without editing the phrase", () => {
   const before = structuredClone(document);
   const recorded = render({ ...scene, preview: { source: candidate, collisions: [] } });
   const target = locate(snapSource(candidate), size),
     bounds = fieldBounds(size);
-  expect(recorded.strokes.filter((stroke) => stroke.dash.length)).toEqual([
-    {
-      points: [
-        { x: bounds.left, y: target.y },
-        target,
-        { x: target.x, y: bounds.top + bounds.height + 10 },
-      ],
-      dash: [2, 5],
-      color: "#dce6ce3d",
-      width: 0.7,
-      alpha: 1,
-    },
+  expect(
+    recorded.strokes.filter((stroke) => stroke.dash.length).map(({ points }) => points),
+  ).toEqual([
+    [
+      { x: bounds.left, y: target.y },
+      { x: bounds.left + bounds.width, y: target.y },
+    ],
+    [
+      { x: target.x, y: bounds.top },
+      { x: target.x, y: bounds.top + bounds.height },
+    ],
   ]);
-  expect(recorded.circles).toContainEqual({ ...target, radius: 5.5 });
-  expect(recorded.labels).toEqual([]);
+  expect(recorded.strokes).toContainEqual(
+    expect.objectContaining({ circle: { ...target, radius: 5 } }),
+  );
+  expect(recorded.fills).toContainEqual({ circle: { ...target, radius: 1 }, color: "#d7ded0d9" });
   expect(document).toEqual(before);
   expect(compose(document)).toEqual(scene.score);
+  expect(render(scene).strokes).toEqual([]);
 });
 
-test.each([390, 900])("idle lights have no tails or permanent guides at width %s", (width) => {
-  const viewport = { width, height: 600 };
-  const recorded = render(scene, viewport);
-  expect(recorded.strokes).toEqual([]);
-  expect(recorded.circles.filter((circle) => circle.radius === 5.2)).toEqual([
-    { ...locate(document.sources[0], viewport), radius: 5.2 },
-  ]);
-  expect(recorded.labels).toEqual([]);
-});
-
-test("selection strengthens the light's color and glow without adding outlines or moving its head", () => {
-  const idle = render(scene),
-    selected = render({ ...scene, selected: 1 });
-  expect(selected.strokes).toEqual([]);
-  expect(selected.labels).toEqual([]);
-  expect(selected.fills).toContainEqual({
-    circle: { ...locate(document.sources[0], size), radius: 48 },
-    alpha: 0.23,
-  });
-  expect(idle.fills).toContainEqual({
-    circle: { ...locate(document.sources[0], size), radius: 35 },
-    alpha: 0.09,
-  });
-  expect(selected.circles.filter((circle) => circle.radius === 5.2)).toEqual(
-    idle.circles.filter((circle) => circle.radius === 5.2),
-  );
-  expect(selected.gradients.at(-1)?.stops).toEqual([
-    { offset: 0, color: "#fff8e9" },
-    { offset: 0.18, color: "#e9bd7e" },
-    { offset: 0.65, color: "#e9bd7e" },
-    { offset: 1, color: "#e9bd7ecc" },
-  ]);
-  expect(idle.gradients.at(-1)?.stops).toEqual([
-    { offset: 0, color: "#edece0" },
-    { offset: 0.3, color: "#e9bd7e" },
-    { offset: 1, color: "#e9bd7e65" },
-  ]);
-  expect(compose(document)).toEqual(scene.score);
-});
-
-test("a sounding light pulses briefly, then returns to its resting glow", () => {
-  const onset = render({ ...scene, playing: true }, size, 2);
-  const later = render({ ...scene, playing: true }, size, 4);
-  const position = locate(document.sources[0], size);
-  expect(onset.fills).toContainEqual({
-    circle: { ...position, radius: 67 },
-    alpha: expect.closeTo(0.34, 10),
-  });
-  expect(later.fills).toContainEqual({ circle: { ...position, radius: 35 }, alpha: 0.09 });
-});
-
-test("without an active placement, there are no alignment guides, landing ring, or temporary labels", () => {
-  const recorded = render(scene);
-  expect(recorded.strokes).toEqual([]);
-  expect(recorded.circles.filter((circle) => circle.radius === 5.5)).toEqual([]);
-  expect(recorded.labels).toEqual([]);
-  expect(recorded.circles).toContainEqual({ ...locate(document.sources[0], size), radius: 5.2 });
-});
-
-test("an occupied landing highlights the conflict without replacing the existing light or adding a label", () => {
+test("an occupied landing highlights the conflict without replacing the existing light", () => {
   const recorded = render({
     ...scene,
-    preview: {
-      source: { id: 2, step: 2.1, tone: 7.1 },
-      collisions: [{ sourceId: 1, step: 2 }],
-    },
+    preview: { source: { id: 2, step: 2.1, tone: 7.1 }, collisions: [{ sourceId: 1, step: 2 }] },
   });
-  expect(recorded.strokes.find((stroke) => stroke.dash.length)?.color).toBe("#ef9b863d");
-  expect(recorded.circles).toContainEqual({ ...locate(document.sources[0], size), radius: 14 });
-  expect(recorded.labels).toEqual([]);
+  expect(recorded.strokes.find((stroke) => stroke.dash.length)?.color).toBe("#f4a3913b");
+  expect(recorded.strokes).toContainEqual(
+    expect.objectContaining({
+      circle: { ...locate(document.sources[0], size), radius: 4.2 + 9 },
+      color: "#f4a391d9",
+    }),
+  );
+  expect(core(recorded)?.circle).toEqual({
+    ...locate(snapSource({ id: 2, step: 2.1, tone: 7.1 }), size),
+    radius: 1,
+  });
   expect(compose(document)).toEqual(scene.score);
+});
+
+test("collision feedback expires without leaving a permanent outline", () => {
+  const feedback = { collisions: [{ sourceId: 1, step: 2 }], started: 100 };
+  expect(render({ ...scene, feedback }, size, null, 200).strokes).toHaveLength(1);
+  expect(render({ ...scene, feedback }, size, null, 900).strokes).toEqual([]);
 });

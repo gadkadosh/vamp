@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import type { KeyboardEvent, PointerEvent } from "react";
+import type { KeyboardEvent, PointerEvent, ReactNode } from "react";
 import { drawSpace } from "./drawSpace";
-import { findCollisions, moveSource, sourceLabel } from "./playground";
+import { clamp, findCollisions, moveSource, sourceLabel } from "./playground";
 import type {
   CollisionFeedback,
   Constellation,
@@ -25,6 +25,7 @@ type Props = {
   nextId: () => number;
   getProgress: () => number | null;
   onPlayback: () => void;
+  renderSelection: (source: Source, focusSurface: () => void) => ReactNode;
 };
 type Gesture = {
   pointer: number;
@@ -39,6 +40,7 @@ type Gesture = {
 export function PointSpace(props: Props) {
   const surface = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
+  const tools = useRef<HTMLDivElement>(null);
   const elements = useRef(new Map<number, HTMLButtonElement>());
   const [size, setSize] = useState<Size>({ width: 1, height: 1 });
   const gesture = useRef<Gesture | null>(null);
@@ -59,6 +61,7 @@ export function PointSpace(props: Props) {
     ...props,
     document: { ...props.document, sources },
     selected: draft?.id ?? props.selected,
+    reducedMotion,
     preview: draft
       ? {
           source: draft,
@@ -99,21 +102,33 @@ export function PointSpace(props: Props) {
     const element = canvas.current!;
     const context = element.getContext("2d")!;
     const ratio = Math.min(devicePixelRatio || 1, 2);
+    // Let the notes illuminate the whole instrument, without clipping blooms at the field edge.
+    const host = surface.current!.closest("main")!.getBoundingClientRect();
+    const canvasTop = surface.current!.getBoundingClientRect().top - host.top;
+    element.style.top = `${-canvasTop}px`;
+    element.style.height = `${host.height}px`;
     element.width = Math.round(size.width * ratio);
-    element.height = Math.round(size.height * ratio);
-    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    element.height = Math.round(host.height * ratio);
+    context.setTransform(ratio, 0, 0, ratio, 0, canvasTop * ratio);
     let frame: number;
     function draw() {
       const scene = latest.current;
       const now = performance.now();
-      if (motion.current && now - motion.current.started >= SETTLE_MS) motion.current = null;
+      if (motion.current && (scene.reducedMotion || now - motion.current.started >= SETTLE_MS))
+        motion.current = null;
       const points = layoutSources(scene.document.sources, size, motion.current, now);
+      context.clearRect(0, -canvasTop, size.width, host.height);
       drawSpace(context, scene, size, scene.getProgress(), points, now);
       for (const { source, position } of points) {
         const target = elements.current.get(source.id);
         if (target) {
           target.style.left = `${position.x}px`;
           target.style.top = `${position.y}px`;
+        }
+        if (source.id === scene.selected && tools.current) {
+          const { offsetWidth: width, offsetHeight: height } = tools.current;
+          tools.current.style.left = `${clamp(position.x - width / 2, 4, Math.max(4, size.width - width - 4))}px`;
+          tools.current.style.top = `${position.y + 27 + height > size.height ? position.y - height - 28 : position.y + 27}px`;
         }
       }
       frame = requestAnimationFrame(draw);
@@ -268,55 +283,76 @@ export function PointSpace(props: Props) {
     }
   }
 
+  const selected = props.document.sources.find(({ id }) => id === props.selected);
+
   return (
-    <div
-      ref={surface}
-      className={`point-space${dragging ? " is-dragging" : ""}${keyboard ? " is-keyboard" : ""}`}
-      tabIndex={0}
-      role="group"
-      aria-label="Interactive constellation"
-      aria-describedby="space-instructions"
-      onPointerDown={pointerDown}
-      onPointerMove={pointerMove}
-      onPointerUp={finish}
-      onPointerCancel={finish}
-      onLostPointerCapture={finish}
-      onKeyDown={keyDown}
-      onContextMenu={(event) => event.preventDefault()}
-    >
-      <canvas ref={canvas} aria-hidden="true" />
-      {lights.map(({ source, position }) => (
-        <button
-          key={source.id}
-          ref={(element) => {
-            if (element) elements.current.set(source.id, element);
-            else elements.current.delete(source.id);
+    <>
+      <div
+        ref={surface}
+        className={`point-space${dragging ? " is-dragging" : ""}${keyboard ? " is-keyboard" : ""}`}
+        tabIndex={0}
+        role="group"
+        aria-label="Musical surface"
+        aria-describedby="space-instructions"
+        onPointerDown={pointerDown}
+        onPointerMove={pointerMove}
+        onPointerUp={finish}
+        onPointerCancel={finish}
+        onLostPointerCapture={finish}
+        onKeyDown={keyDown}
+        onContextMenu={(event) => event.preventDefault()}
+      >
+        <canvas ref={canvas} aria-hidden="true" />
+        {lights.map(({ source, position }) => (
+          <button
+            key={source.id}
+            ref={(element) => {
+              if (element) elements.current.set(source.id, element);
+              else elements.current.delete(source.id);
+            }}
+            type="button"
+            data-light={source.id}
+            className="light-hit"
+            style={{ left: position.x, top: position.y }}
+            aria-label={sourceLabel(source)}
+            aria-pressed={scene.selected === source.id}
+            tabIndex={props.selected === source.id ? 0 : -1}
+            onFocus={() => props.onSelect(source.id)}
+            onClick={(event) => {
+              // Pointer selection is resolved on release; retain assistive click activation.
+              if (event.detail === 0 && props.document.sources.some(({ id }) => id === source.id))
+                props.onSelect(source.id);
+            }}
+          />
+        ))}
+        <p id="space-instructions" className="sr-only">
+          Left to right is time; bottom to top is pitch. Tap empty space to add a light. Tap a
+          selected light again to deselect it. Drag a light to move it. Alignment guides and a
+          landing point appear only while placing or dragging; release to settle on the previewed
+          beat and pitch. Occupied bass beats and identical sounds are rejected. Shift-drag to
+          scatter lights; right-click to remove. Keyboard: Enter adds; arrows select a light, then
+          move it one timing step or pitch. Select a light to duplicate or remove it using the
+          buttons beside it. Keyboard focus uses a small frame. Delete removes; Escape deselects;
+          Space plays or pauses. Tab leaves the surface and its selected controls. Undo restores the
+          previous gesture.
+        </p>
+      </div>
+      {selected && !dragging && (
+        <div
+          ref={tools}
+          className="note-tools"
+          role="group"
+          aria-label="Selected note"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              props.onSelect(null);
+              surface.current?.focus();
+            }
           }}
-          type="button"
-          data-light={source.id}
-          className="light-hit"
-          style={{ left: position.x, top: position.y }}
-          aria-label={sourceLabel(source)}
-          aria-pressed={scene.selected === source.id}
-          tabIndex={props.selected === source.id ? 0 : -1}
-          onFocus={() => props.onSelect(source.id)}
-          onClick={(event) => {
-            // Pointer selection is resolved on release; retain assistive click activation.
-            if (event.detail === 0 && props.document.sources.some(({ id }) => id === source.id))
-              props.onSelect(source.id);
-          }}
-        />
-      ))}
-      <p id="space-instructions" className="sr-only">
-        Left to right is time; bottom to top is pitch. Tap empty space to add a light. Tap a
-        selected light again to deselect it. Drag a light to move it. Alignment guides and a landing
-        point appear only while placing or dragging; release to settle on the previewed beat and
-        pitch. Occupied bass beats and identical sounds are rejected. Shift-drag to scatter lights;
-        right-click to remove. Keyboard: Enter adds; arrows select a light, then move it one timing
-        step or pitch. Select a light to duplicate or remove it using the buttons below. Keyboard
-        focus uses corner marks. Delete removes; Escape deselects; Space plays or pauses. Tab leaves
-        the surface and its selected controls. Undo restores the previous gesture.
-      </p>
-    </div>
+        >
+          {props.renderSelection(selected, () => surface.current?.focus())}
+        </div>
+      )}
+    </>
   );
 }

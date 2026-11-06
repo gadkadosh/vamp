@@ -12,13 +12,13 @@ pnpm types
 pnpm dev
 ```
 
-Open the URL printed by Vite, then press **Play & discover** to enable audio.
+Open the URL printed by Vite, then press the central **Play** button to enable audio.
 
 ## Constellation
 
-Notes appear as colored lights on a dark field. Left to right is time in a two-measure loop; bottom to top is low to high pitch. There are no cameras, depth controls, input modes, or permanent pitch grids. Open **?** to discover the rules.
+The Living light design gives the instrument a full-screen, deep-blue field with circular, material-colored lights. Left to right is time in a two-measure loop; bottom to top is low to high pitch. There are no cameras, depth controls, input modes, or permanent pitch grids. Open **How to play** for the guide; **Sketch options** (the three dots) contains the note count, clear, and reset actions.
 
-Press **Play & discover** to hear the starting phrase. Tap empty space to add a light; drag a light to change timing and pitch. A snapped landing ring and temporary alignment guides appear only while pressing to place or dragging a light, for both mouse and touch. There is no hover preview or temporary note-name label. The preview does not add or sound a note and disappears on release or cancellation. Selection strengthens the light's color and glow, without a surrounding ring. Select a light to duplicate or remove it; undo restores the previous gesture.
+Press **Play** to hear the starting phrase. Tap empty space to add a light; drag a light to change timing and pitch. A snapped landing ring and temporary alignment guides appear only while pressing to place or dragging a light, for both mouse and touch. There is no hover preview or temporary note-name label. The preview does not add or sound a note and disappears on release or cancellation. Selection strengthens the light's color and glow, without a surrounding ring. Select a light to reveal copy and remove controls beside it; undo restores the previous gesture.
 
 ### Magnetic timing and pitch
 
@@ -30,11 +30,11 @@ Dragging is a local preview: the original music continues until a valid release,
 
 - **Click empty space:** add a light at its magnetic landing point. **Tap a light:** select it; tap it again to deselect. **Drag a light:** preview a new timing and pitch, then release to commit. Small pointer movements count as taps, not edits.
 - **Shift-drag empty space:** scatter a trail of lights as one undoable gesture.
-- **Right-click a light**, or select it and use the lower bin button, to remove it. The duplicate button adds a copy four steps later.
+- **Right-click a light**, or select it and use its nearby bin button, to remove it. The duplicate button adds a copy four steps later.
 - **Undo / Redo:** buttons or Cmd/Ctrl Z / Cmd/Ctrl Shift Z. Each drag or scattered trail is one history entry. Clear and reset are also undoable.
 - **Speaker icon:** toggle master mute; unmuted volume is 35%.
 
-Keyboard: Tab into the space. Enter adds a light; arrows select the first light if none is selected, then move the selection one rhythmic step left/right or one pitch up/down. Small corner marks identify keyboard focus on a light; pointer selection does not show them. Delete/Backspace removes; Escape deselects; Space plays or pauses. Tab leaves the surface and its selected controls. Individual lights expose descriptive accessible names with their material, pitch, and beat position.
+Keyboard: Tab into the space. Enter adds a light; arrows select the first light if none is selected, then move the selection one rhythmic step left/right or one pitch up/down. A small frame identifies keyboard focus on a light; pointer selection does not show it. Delete/Backspace removes; Escape deselects; Space plays or pauses. Tab leaves the surface and its selected controls. Individual lights expose descriptive accessible names with their material, pitch, and beat position.
 
 The musical rules are deterministic. A single ascending tone axis passes through bass, mallet, melody, and glass materials, with color following material. It uses a subset of each voice’s original range so moving higher never drops the pitch when crossing a material boundary. The starting constellation adapts the original seed phrases to this axis.
 
@@ -48,7 +48,7 @@ Everything—including history—lives in memory in the current tab. Reloading r
 
 Four synthesized acoustic sketches are available: mallet, felt keys, plucked bass, and glass chimes. Felt keys are the single melodic voice; there is no material switch. These are synthesized sketches, not recordings or physically accurate replicas.
 
-All sounds share a two-measure 4/4 loop at 88 BPM in C major, with 32 sixteenth-note timing positions. Each material has its own natural decay, with no editable note lengths or visual tails. Bass damps at the next bass onset; other notes overlap independently. Notes can ring across the loop seam rather than being cut short. Lights glow briefly when they sound. Each new loop re-articulates the phrase. Pause freezes the Web Audio clock and holds the visual playhead; mute does not stop it. The visual playhead reads that same clock rather than running a separate animation timer.
+All sounds share a two-measure 4/4 loop at 88 BPM in C major, with 32 sixteenth-note timing positions. Each material has its own natural decay, with no editable note lengths or visual tails. Bass damps at the next bass onset; other notes overlap independently. Notes can ring across the loop seam rather than being cut short. Lights bloom in their material color when they sound, with a faint sweep instead of a permanent timing ruler. Reduced motion uses illumination without expanding waves or a moving sweep. Each new loop re-articulates the phrase. Pause freezes the Web Audio clock and holds the lights; mute does not stop it. The visualization reads that same clock rather than running a separate animation timer.
 
 Audio is scheduled slightly ahead for steady timing. Changes affect the next unscheduled audio window rather than restarting the loop. A sleeping or heavily throttled tab may skip strikes or delay held-note changes rather than catch up in a burst.
 

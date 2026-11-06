@@ -4,6 +4,7 @@ import { PointSpace } from "./PointSpace";
 import {
   compose,
   createConstellation,
+  MATERIALS,
   placeSource,
   sourceLabel,
   toneFor,
@@ -20,8 +21,8 @@ type IconName =
   | "undo"
   | "redo"
   | "clear"
-  | "seed"
-  | "help"
+  | "more"
+  | "close"
   | "sound"
   | "mute"
   | "duplicate";
@@ -45,19 +46,11 @@ function Icon({ name }: { name: IconName }) {
       ) : name === "redo" ? (
         <path d="m16 5 5 5-5 5m5-5H11a6 6 0 0 0 0 12" />
       ) : name === "clear" ? (
-        <>
-          <path d="M4 7h16M9 3h6M6 7l1 14h10l1-14M10 11v6m4-6v6" />
-        </>
-      ) : name === "seed" ? (
-        <>
-          <path d="M4 10a8 8 0 1 1 0 5m0-11v6h6" />
-          <circle cx="12" cy="12" r="1.5" />
-        </>
-      ) : name === "help" ? (
-        <>
-          <circle cx="12" cy="12" r="9" />
-          <path d="M9 8a3 3 0 0 1 6 1c0 2-3 2-3 4m0 4h.01" />
-        </>
+        <path d="M4 7h16M9 3h6M6 7l1 14h10l1-14M10 11v6m4-6v6" />
+      ) : name === "more" ? (
+        <path d="M5 12h.01M12 12h.01M19 12h.01" strokeWidth="3" />
+      ) : name === "close" ? (
+        <path d="m6 6 12 12M18 6 6 18" />
       ) : name === "duplicate" ? (
         <>
           <rect x="8" y="8" width="12" height="12" rx="3" />
@@ -84,20 +77,24 @@ function App() {
     future: [],
   }));
   const historyRef = useRef(history);
-  const document = history.present;
-  const score = useMemo(() => compose(document), [document]);
+  const constellation = history.present;
+  const score = useMemo(() => compose(constellation), [constellation]);
   const scoreRef = useRef(score);
   const engine = useRef<Sequencer | null>(null);
   const [selectedId, setSelected] = useState<number | null>(null);
-  const selected = document.sources.find((source) => source.id === selectedId);
-  const nextSource = useRef(Math.max(...document.sources.map((source) => source.id), 0) + 1);
+  const selected = constellation.sources.find((source) => source.id === selectedId);
+  const nextSource = useRef(Math.max(...constellation.sources.map((source) => source.id), 0) + 1);
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
   const [muted, setMuted] = useState(false);
   const [help, setHelp] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const menuAnchor = useRef<HTMLDivElement>(null);
+  const menuTrigger = useRef<HTMLButtonElement>(null);
+  const guide = useRef<HTMLDialogElement>(null);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState<CollisionFeedback | null>(null);
-  const [message, setMessage] = useState("A few notes to start. Make the next one yours.");
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     const sequencer = new Sequencer(
@@ -113,6 +110,33 @@ function App() {
   useEffect(() => {
     scoreRef.current = score;
   }, [score]);
+  useEffect(() => {
+    if (!message) return;
+    const timer = setTimeout(() => setMessage(""), 4000);
+    return () => clearTimeout(timer);
+  }, [message]);
+  useEffect(() => {
+    if (help) guide.current?.showModal();
+    else guide.current?.close();
+  }, [help]);
+  useEffect(() => {
+    if (!menu) return;
+    function outside(event: globalThis.PointerEvent) {
+      if (!menuAnchor.current?.contains(event.target as Node)) setMenu(false);
+    }
+    function keyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") {
+        setMenu(false);
+        menuTrigger.current?.focus();
+      }
+    }
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", keyDown);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("keydown", keyDown);
+    };
+  }, [menu]);
 
   function apply(next: History) {
     historyRef.current = next;
@@ -178,7 +202,12 @@ function App() {
   }
   useEffect(() => {
     function keyDown(event: globalThis.KeyboardEvent) {
-      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "z") return;
+      if (
+        guide.current?.open ||
+        !(event.metaKey || event.ctrlKey) ||
+        event.key.toLowerCase() !== "z"
+      )
+        return;
       event.preventDefault();
       if (event.shiftKey) redo();
       else undo();
@@ -203,15 +232,12 @@ function App() {
   }
 
   return (
-    <main className="app">
+    <main className="instrument" aria-label="Vamp musical instrument">
       <header className="masthead">
-        <a className="wordmark" href="/" aria-label="Vamp home">
-          vamp<span>·</span>
-        </a>
-        <span className="edition">
-          Open-ended instruments <i>/</i> study 04
-        </span>
-        <div className="header-tools">
+        <h1 className="wordmark" aria-label="Vamp">
+          vamp<span aria-hidden="true">·</span>
+        </h1>
+        <nav className="header-tools" aria-label="Sketch controls">
           <button
             className="icon-button"
             title="Undo · ⌘/Ctrl Z"
@@ -230,216 +256,252 @@ function App() {
           >
             <Icon name="redo" />
           </button>
-          <span className="tool-divider" />
-          <button
-            className="icon-button"
-            title="Start with an empty space · undoable"
-            aria-label="Clear space"
-            disabled={!document.sources.length}
-            onClick={() => {
-              edit((previous) => ({ ...previous, sources: [] }));
-              setSelected(null);
-              setFeedback(null);
-              setMessage("An empty space. Tap anywhere to begin.");
+          <div
+            className="menu-anchor"
+            ref={menuAnchor}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget)) setMenu(false);
             }}
           >
-            <Icon name="clear" />
-          </button>
+            <button
+              ref={menuTrigger}
+              className="icon-button"
+              aria-label="Sketch options"
+              aria-expanded={menu}
+              aria-controls="sketch-menu"
+              onClick={() => setMenu(!menu)}
+            >
+              <Icon name="more" />
+            </button>
+            {menu && (
+              <div className="popover sketch-menu" id="sketch-menu">
+                <p className="menu-caption">{constellation.sources.length} lights in this loop</p>
+                <button
+                  disabled={!constellation.sources.length}
+                  onClick={() => {
+                    edit((previous) => ({ ...previous, sources: [] }));
+                    setSelected(null);
+                    setFeedback(null);
+                    setMessage("An empty space. Tap anywhere to begin.");
+                    setMenu(false);
+                    menuTrigger.current?.focus();
+                  }}
+                >
+                  Start with an empty space
+                </button>
+                <button
+                  onClick={() => {
+                    edit(() => createConstellation());
+                    setSelected(null);
+                    setFeedback(null);
+                    setMessage("Back to the starting phrase.");
+                    setMenu(false);
+                    menuTrigger.current?.focus();
+                  }}
+                >
+                  Restore the starting phrase
+                </button>
+                <p className="menu-footnote">Both can be undone. Nothing is saved.</p>
+              </div>
+            )}
+          </div>
           <button
-            className="icon-button"
-            title="Return to the starting constellation · undoable"
-            aria-label="Reset constellation"
+            className="help-button"
+            aria-haspopup="dialog"
             onClick={() => {
-              edit(() => createConstellation());
-              setSelected(null);
-              setFeedback(null);
-              setMessage("Back to the first constellation.");
+              setMenu(false);
+              setHelp(true);
             }}
           >
-            <Icon name="seed" />
+            How to play
           </button>
-          <button
-            className={`icon-button${help ? " active" : ""}`}
-            title="Discover the rules"
-            aria-label="Discover the rules"
-            aria-expanded={help}
-            aria-controls="discovery"
-            onClick={() => setHelp(!help)}
-          >
-            <Icon name="help" />
-          </button>
-        </div>
+        </nav>
       </header>
 
-      <section className="instrument-space" aria-label="Abstract musical instrument">
-        <div className="space-intro">
-          <p className="eyebrow">01 / A constellation of small decisions</p>
-          <h1>What happens if you leave a little light?</h1>
-          <p>Place one. Move it. Leave another.</p>
-        </div>
-        <div className="surface-container">
-          <PointSpace
-            document={document}
-            score={score}
-            selected={selected?.id ?? null}
-            playing={playing}
-            feedback={feedback}
-            onSelect={setSelected}
-            onPlace={place}
-            onEdit={edit}
-            onCommit={commitGesture}
-            nextId={() => nextSource.current++}
-            getProgress={() => engine.current?.getPosition() ?? null}
-            onPlayback={() => void togglePlayback()}
-          />
-          <div className="surface-caption">
-            <span className="live-dot" />
-            {playing ? "A shared loop, unfolding." : "The space is listening."}
-          </div>
-          <div className="gesture-hint">Tap to add · Drag to move</div>
-          {document.sources.length === 0 && (
-            <div className="empty-invitation" aria-hidden="true">
-              <span>＋</span>A first note is all it takes.
-            </div>
-          )}
-        </div>
-        {help && (
-          <aside className="discovery" id="discovery">
-            <button
-              className="close-discovery"
-              aria-label="Close discovery guide"
-              onClick={() => setHelp(false)}
-            >
-              ×
-            </button>
-            <p className="eyebrow">A few things to discover</p>
-            <h2>It isn’t random.</h2>
-            <p>Every light leaves a sound in the loop. Nothing changes on its own.</p>
-            <dl>
-              <div>
-                <dt>Place & move</dt>
-                <dd>
-                  Left to right is when. Bottom to top is low to high. Press to place a light or
-                  drag one to move it. Temporary guides and a landing point appear only while
-                  positioning it. Release to settle onto the beat and pitch. The color follows the
-                  sound.
-                </dd>
-              </div>
-              <div>
-                <dt>Let it ring</dt>
-                <dd>
-                  Each light starts a sound that fades naturally, even across the loop edge. Bass is
-                  damped when the next bass note begins. A light glows briefly when it sounds.
-                </dd>
-              </div>
-              <div>
-                <dt>Every note has a voice</dt>
-                <dd>
-                  Felt keys can form chords. Bass has one note per beat: an occupied landing
-                  flashes, and an invalid drag returns home. Identical sounds also flash instead of
-                  creating a silent duplicate.
-                </dd>
-              </div>
-              <div>
-                <dt>Make a mark</dt>
-                <dd>
-                  Shift-drag through empty space to leave a trail of notes. There’s no fixed number
-                  you have to work with.
-                </dd>
-              </div>
-              <div>
-                <dt>Keep or take away</dt>
-                <dd>
-                  Tap a light to select it, then use the buttons below to duplicate or remove it.
-                  Tap it again or press Escape to deselect. You can also right-click to remove. Undo
-                  brings it back.
-                </dd>
-              </div>
-            </dl>
-            <p className="discovery-foot">
-              All notes share a scale. No note is silently ignored. Tab into the space for keyboard
-              controls.
-            </p>
-          </aside>
-        )}
-      </section>
-
-      <footer className="instrument-footer">
-        <div className="selection-tools">
-          {selected ? (
+      <section className="surface" aria-label="Your musical sketch">
+        <PointSpace
+          document={constellation}
+          score={score}
+          selected={selected?.id ?? null}
+          playing={playing}
+          feedback={feedback}
+          onSelect={setSelected}
+          onPlace={place}
+          onEdit={edit}
+          onCommit={commitGesture}
+          nextId={() => nextSource.current++}
+          getProgress={() => engine.current?.getPosition() ?? null}
+          onPlayback={() => void togglePlayback()}
+          renderSelection={(source, focusSurface) => (
             <>
-              <span className="selection-dot" />
-              <span className="selection-name">{toneFor(selected).note.name}</span>
+              <span
+                className="selected-swatch"
+                style={{ background: toneFor(source).color, color: toneFor(source).color }}
+                aria-hidden="true"
+              />
+              <span className="selected-pitch">{toneFor(source).note.name}</span>
+              <span className="selected-material">
+                {
+                  MATERIALS.find(({ instrument }) => instrument === toneFor(source).instrument)
+                    ?.name
+                }
+              </span>
               <button
                 className="icon-button"
-                title="Duplicate note"
+                title="Duplicate, one beat later"
                 aria-label="Duplicate selected note"
                 onClick={() => {
-                  const copy = {
-                    ...selected,
-                    id: nextSource.current++,
-                    step: wrapStep(selected.step + 4),
-                  };
-                  place(copy);
+                  place({ ...source, id: nextSource.current++, step: wrapStep(source.step + 4) });
                 }}
               >
                 <Icon name="duplicate" />
               </button>
               <button
                 className="icon-button"
-                title="Remove note · Delete key"
+                title="Remove · Delete"
                 aria-label="Remove selected note"
                 onClick={() => {
                   edit((previous) => ({
                     ...previous,
-                    sources: previous.sources.filter((source) => source.id !== selected.id),
+                    sources: previous.sources.filter(({ id }) => id !== source.id),
                   }));
                   setSelected(null);
+                  setMessage("Note removed.");
+                  focusSurface();
                 }}
               >
                 <Icon name="clear" />
               </button>
             </>
-          ) : (
-            <span className="selection-prompt">A light is something you can touch.</span>
           )}
-        </div>
-        <div className="playback-controls">
-          <button className="play-button" disabled={busy} onClick={() => void togglePlayback()}>
-            <Icon name={playing ? "pause" : "play"} />
-            <span>{busy ? "One moment" : playing ? "Pause" : "Play & discover"}</span>
-            <span className={`play-indicator${playing ? " playing" : ""}`} />
-          </button>
-        </div>
-        <div className="listening-tools">
-          <span className="source-count">
-            {document.sources.length} {document.sources.length === 1 ? "note" : "notes"}
-            <span className="loop-count">
-              <i>·</i> one loop
-            </span>
-          </span>
-          <span className="tool-divider" />
+        />
+        {!constellation.sources.length && (
+          <div className="empty-invitation" aria-hidden="true">
+            <span className="empty-light" />
+            <p>Leave the first light.</p>
+          </div>
+        )}
+      </section>
+
+      <footer className="listening-dock">
+        <div className="transport">
           <button
-            className="icon-button"
-            title={muted ? "Unmute" : "Mute"}
-            aria-label="Mute audio"
-            aria-pressed={muted}
-            onClick={() => {
-              engine.current?.setVolume(muted ? 0.35 : 0);
-              setMuted(!muted);
-            }}
+            className="play-button"
+            disabled={busy}
+            aria-label={playing ? "Pause loop" : "Play loop"}
+            aria-busy={busy}
+            aria-pressed={playing}
+            onClick={() => void togglePlayback()}
           >
-            <Icon name={muted ? "mute" : "sound"} />
+            <Icon name={playing ? "pause" : "play"} />
           </button>
         </div>
+        <button
+          className="sound-control"
+          aria-label={muted ? "Unmute audio" : "Mute audio"}
+          aria-pressed={muted}
+          onClick={() => {
+            engine.current?.setVolume(muted ? 0.35 : 0);
+            setMuted(!muted);
+          }}
+        >
+          <Icon name={muted ? "mute" : "sound"} />
+          <span>{muted ? "Sound off" : "Sound on"}</span>
+        </button>
+        <p className={`gesture-hint${error || message ? " is-feedback" : ""}`} role="status">
+          {error || message || "Tap to add. Drag to move."}
+        </p>
       </footer>
-      <div className="bottom-note">
-        <span role="status">{error || message}</span>
-        <span>Just this visit. Nothing is saved.</span>
-      </div>
       <p className="sr-only" aria-live="polite">
         {selected ? sourceLabel(selected) : "No note selected."}
       </p>
+
+      <dialog
+        ref={guide}
+        className="discovery"
+        aria-labelledby="guide-title"
+        onClose={() => setHelp(false)}
+      >
+        <button
+          className="icon-button close-guide"
+          aria-label="Close guide"
+          onClick={() => setHelp(false)}
+        >
+          <Icon name="close" />
+        </button>
+        <h2 id="guide-title">Leave a little light.</h2>
+        <p className="guide-intro">
+          Every light is a sound.
+          <br />
+          Every loop is another chance to listen.
+        </p>
+        <svg
+          className="guide-diagram"
+          viewBox="0 0 330 125"
+          aria-label="Time runs left to right, pitch rises upwards"
+          role="img"
+        >
+          <defs>
+            <radialGradient id="guide-glow">
+              <stop stopColor={MATERIALS[2].color} stopOpacity=".3" />
+              <stop offset="1" stopColor={MATERIALS[2].color} stopOpacity="0" />
+            </radialGradient>
+          </defs>
+          <path
+            d="M28 95H307m-5-4 5 4-5 4M28 95V18m-4 5 4-5 4 5"
+            stroke="#80938e"
+            strokeWidth=".8"
+            fill="none"
+          />
+          <text x="293" y="116">
+            Later
+          </text>
+          <text x="41" y="25">
+            Higher
+          </text>
+          <circle cx="160" cy="53" r="40" fill="url(#guide-glow)" />
+          {MATERIALS.map((material, index) => (
+            <circle
+              key={material.instrument}
+              cx={[86, 126, 160, 226][index]}
+              cy={[77, 64, 53, 35][index]}
+              r={index === 2 ? 5 : 4}
+              fill={material.color}
+            />
+          ))}
+        </svg>
+        <dl>
+          <div>
+            <dt>Make a mark</dt>
+            <dd>
+              Tap the space to add a light. Drag one to change when it plays and how high it sounds.
+              Release and it finds its place. Shift-drag to scatter a trail.
+            </dd>
+          </div>
+          <div>
+            <dt>Let it ring</dt>
+            <dd>
+              Press Play. The lights bloom as their sounds unfold. Nothing changes unless you change
+              it. Higher notes change from bass through mallet and felt keys to glass.
+            </dd>
+          </div>
+          <div>
+            <dt>Keep or take away</dt>
+            <dd>
+              Select a light to copy or remove it. Tap it again to deselect. Undo brings it back.
+              Occupied bass beats and identical sounds flash instead of adding a duplicate.
+            </dd>
+          </div>
+        </dl>
+        <p className="guide-footnote">
+          Just this tab. Nothing is saved.
+          <br />
+          Tab into the space for keyboard controls.
+        </p>
+        <button className="guide-done" onClick={() => setHelp(false)}>
+          Let’s play
+        </button>
+      </dialog>
     </main>
   );
 }

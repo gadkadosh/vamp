@@ -10,12 +10,13 @@ export const SETTLE_MS = 180;
 export const TAU = Math.PI * 2;
 
 export function fieldBounds(size: Size) {
-  const padding = 24;
+  const compact = size.width < 520;
+  const inset = compact ? 34 : size.width < 800 ? 48 : 70;
   return {
-    left: padding,
-    top: padding,
-    width: Math.max(1, size.width - padding * 2),
-    height: Math.max(1, size.height - padding - 52),
+    left: inset,
+    top: compact ? 35 : 38,
+    width: Math.max(1, size.width - inset * 2),
+    height: Math.max(1, size.height - (compact ? 72 : 82)),
   };
 }
 
