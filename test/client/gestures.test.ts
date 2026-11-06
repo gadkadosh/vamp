@@ -113,6 +113,7 @@ function frame(milliseconds = 16) {
     for (const callback of callbacks) callback(wallTime);
   });
 }
+
 function glowAt(step: number, tone: number) {
   const position = locate({ id: 0, step, tone }, size);
   return glows.get(`${position.x}:${position.y}`);
@@ -127,22 +128,27 @@ function element<T extends HTMLElement = HTMLElement>(selector: string): T {
 function surface() {
   return element(".point-space");
 }
+
 function button(label: string) {
   return element<HTMLButtonElement>(`button[aria-label="${label}"]`);
 }
+
 function notes() {
   return [...document.querySelectorAll("[data-light]")].map((light) =>
     light.getAttribute("aria-label"),
   );
 }
+
 function click(target: HTMLElement) {
   act(() => target.click());
 }
+
 function blur() {
   act(() => {
     window.dispatchEvent(new Event("blur"));
   });
 }
+
 function key(key: string, modifiers: KeyboardEventInit = {}) {
   const event = new KeyboardEvent("keydown", {
     key,
@@ -155,6 +161,7 @@ function key(key: string, modifiers: KeyboardEventInit = {}) {
   });
   return event;
 }
+
 function pointer(
   type: string,
   step: number,
@@ -177,18 +184,22 @@ function pointer(
     );
   });
 }
+
 function add(step: number, tone: number) {
   pointer("pointerdown", step, tone);
   pointer("pointerup", step, tone);
 }
+
 function paint() {
   pointer("pointerdown", 6, 9, surface(), { shiftKey: true });
   pointer("pointermove", 8, 10);
 }
+
 function drag() {
   pointer("pointerdown", 0, 6, element('[data-light="1"]'));
   pointer("pointermove", 2, 6);
 }
+
 function expectFinished() {
   expect(surface().classList.contains("is-dragging")).toBe(false);
   expect(surface().hasPointerCapture(1)).toBe(false);
@@ -408,6 +419,7 @@ test("events from another pointer cannot finish or cancel the current gesture", 
 function enterSurface() {
   act(() => surface().focus());
 }
+
 function expectSelected(id: number) {
   const light = element<HTMLButtonElement>(`[data-light="${id}"]`);
   expect(document.activeElement).toBe(light);
@@ -672,8 +684,8 @@ test("settling keeps hit targets aligned and stops requesting frames at its fina
   expect(frames.size).toBe(1);
   expect(parseFloat(light.style.left)).toBeCloseTo(from.x);
   frame(90);
-  const x = parseFloat(light.style.left),
-    y = parseFloat(light.style.top);
+  const x = parseFloat(light.style.left);
+  const y = parseFloat(light.style.top);
   expect(x).toBeLessThan(from.x);
   expect(x).toBeGreaterThan(to.x);
   expect(
@@ -770,8 +782,8 @@ test("playback does not rewrite static hit positions or poll toolbar layout ever
   const observer = new MutationObserver((records) => mutations.push(...records));
   observer.observe(light, { attributes: true, attributeFilter: ["style"] });
   observer.observe(toolbar, { attributes: true, attributeFilter: ["style"] });
-  const widths = width.mock.calls.length,
-    heights = height.mock.calls.length;
+  const widths = width.mock.calls.length;
+  const heights = height.mock.calls.length;
   const context = TestAudioContext.instances[0];
   for (let i = 1; i <= 5; i++) {
     context.currentTime = i * 0.025;

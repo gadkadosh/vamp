@@ -22,11 +22,13 @@ type Props = {
   onPlayback: () => void;
   renderSelection: (note: Note, focusSurface: () => void) => ReactNode;
 };
+
 type GestureEdit = {
   place: (note: Note) => Placement | null;
   commit: () => void;
   cancel: () => void;
 };
+
 type Gesture = {
   edit: GestureEdit;
   pointer: number;
@@ -55,11 +57,15 @@ export function PointSpace(props: Props) {
   const [reducedMotion, setReducedMotion] = useState(
     () => matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
-  const notes = draft
-    ? props.document.notes.some(({ id }) => id === draft.id)
-      ? props.document.notes.map((note) => (note.id === draft.id ? draft : note))
-      : [...props.document.notes, draft]
-    : props.document.notes;
+  let notes = props.document.notes;
+  if (draft) {
+    if (notes.some(({ id }) => id === draft.id)) {
+      notes = notes.map((note) => (note.id === draft.id ? draft : note));
+    } else {
+      notes = [...notes, draft];
+    }
+  }
+
   const scene: Scene = {
     document: { ...props.document, notes },
     selected: draft?.id ?? props.selected,
@@ -138,9 +144,11 @@ export function PointSpace(props: Props) {
     let toolbarSize = toolbar ? { width: toolbar.offsetWidth, height: toolbar.offsetHeight } : null;
     let toolbarPosition: { x: number; y: number } | null = null;
     let frame: number | null = null;
+
     function requestDraw() {
       if (frame === null) frame = requestAnimationFrame(draw);
     }
+
     function draw() {
       frame = null;
       const now = performance.now();
@@ -177,6 +185,7 @@ export function PointSpace(props: Props) {
       }
       if (scene.playing || motion.current) requestDraw();
     }
+
     const remaining = scene.feedback ? scene.feedback.started + FEEDBACK_MS - performance.now() : 0;
     const feedbackTimer =
       remaining > 0
@@ -186,8 +195,8 @@ export function PointSpace(props: Props) {
         : undefined;
     const observer = toolbar
       ? new ResizeObserver(() => {
-          const width = toolbar.offsetWidth,
-            height = toolbar.offsetHeight;
+          const width = toolbar.offsetWidth;
+          const height = toolbar.offsetHeight;
           if (toolbarSize?.width !== width || toolbarSize?.height !== height) {
             toolbarSize = { width, height };
             requestDraw();
@@ -217,27 +226,33 @@ export function PointSpace(props: Props) {
     draftRef.current = note;
     setDraft(note);
   }
+
   function settle(from: Note, to: Note | undefined) {
     motion.current =
       to && !reducedMotion && (from.step !== to.step || from.tone !== to.tone)
         ? { from, to, started: performance.now() }
         : null;
   }
+
   function coordinates(event: PointerEvent<HTMLDivElement>) {
     const bounds = event.currentTarget.getBoundingClientRect();
     return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
   }
+
   function newNote(x: number, y: number): Note {
     return { id: props.nextId(), ...pick(x, y, size) };
   }
+
   function add(x: number, y: number) {
     const note = newNote(x, y);
     const result = props.onPlace(note);
     if (result.accepted) settle(note, result.note);
   }
+
   function releasePointer(pointer: number) {
     if (surface.current?.hasPointerCapture(pointer)) surface.current.releasePointerCapture(pointer);
   }
+
   function cancelPreview() {
     const active = gesture.current;
     gesture.current = null;
@@ -251,6 +266,7 @@ export function PointSpace(props: Props) {
     updateDraft(null);
     if (active) releasePointer(active.pointer);
   }
+
   function remove(id: number) {
     props.onEdit((document) =>
       document.notes.some((note) => note.id === id)
@@ -260,6 +276,7 @@ export function PointSpace(props: Props) {
     props.onSelect(null);
     surface.current?.focus();
   }
+
   function pointerDown(event: PointerEvent<HTMLDivElement>) {
     if (gesture.current || (event.button !== 0 && event.button !== 2)) return;
     const position = coordinates(event);
@@ -316,6 +333,7 @@ export function PointSpace(props: Props) {
     if (note) target?.focus();
     else surface.current?.focus();
   }
+
   function pointerMove(event: PointerEvent<HTMLDivElement>) {
     const active = gesture.current;
     if (!active || active.pointer !== event.pointerId) return;
@@ -334,6 +352,7 @@ export function PointSpace(props: Props) {
       });
     }
   }
+
   function finish(event: PointerEvent<HTMLDivElement>) {
     const active = gesture.current;
     if (!active || active.pointer !== event.pointerId) return;
@@ -359,6 +378,7 @@ export function PointSpace(props: Props) {
     active.edit.commit();
     releasePointer(active.pointer);
   }
+
   function keyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     const moves: Record<string, [number, number]> = {
@@ -382,12 +402,12 @@ export function PointSpace(props: Props) {
         (a, b) => a.step - b.step || a.tone - b.tone || a.id - b.id,
       );
       const index = ordered.findIndex(({ id }) => id === props.selected);
-      const next =
-        index < 0
-          ? direction > 0
-            ? 0
-            : ordered.length - 1
-          : (index + direction + ordered.length) % ordered.length;
+      let next: number;
+      if (index < 0) {
+        next = direction > 0 ? 0 : ordered.length - 1;
+      } else {
+        next = (index + direction + ordered.length) % ordered.length;
+      }
       const id = ordered[next]?.id ?? null;
       props.onSelect(id);
       if (id !== null) elements.current.get(id)?.focus({ preventScroll: true });

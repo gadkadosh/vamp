@@ -152,8 +152,8 @@ test("landing and bounce animations share the same positions for drawing and hit
   const landing = snapNote(draft);
   const motion = { from: draft, to: landing, started: 100 };
   const projected = (time: number) => layoutNotes([landing], size, motion, time)[0].position;
-  const from = locate(draft, size),
-    to = locate(landing, size);
+  const from = locate(draft, size);
+  const to = locate(landing, size);
   expect(projected(100)).toEqual(from);
   expect(projected(100 + SETTLE_MS)).toEqual(to);
   const halfway = projected(100 + SETTLE_MS / 2);
