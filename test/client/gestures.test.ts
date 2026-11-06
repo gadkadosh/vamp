@@ -669,6 +669,142 @@ test("an unavailable canvas context does not break editing or playback controls"
   expect(frames.size).toBe(0);
 });
 
+test.each(["body", ".point-space", '[data-light="1"]'])(
+  "Space plays and pauses from %s without changing the music",
+  async (selector) => {
+    const target = element(selector);
+    act(() => target.focus());
+    const before = notes();
+    await act(async () => {
+      expect(key(" ").defaultPrevented).toBe(true);
+    });
+    expect(button("Pause loop").getAttribute("aria-pressed")).toBe("true");
+    const context = TestAudioContext.instances[0];
+    expect(context.state).toBe("running");
+    await act(async () => {
+      expect(key(" ").defaultPrevented).toBe(true);
+    });
+    expect(button("Play loop").getAttribute("aria-pressed")).toBe("false");
+    expect(context.state).toBe("suspended");
+    expect(notes()).toEqual(before);
+  },
+);
+
+test("holding Space does not repeatedly toggle playback or scroll", async () => {
+  await act(async () => key(" "));
+  const context = TestAudioContext.instances[0];
+  await act(async () => {
+    expect(key(" ", { repeat: true }).defaultPrevented).toBe(true);
+  });
+  expect(button("Pause loop").getAttribute("aria-pressed")).toBe("true");
+  expect(context.state).toBe("running");
+  await act(async () => key(" "));
+  await act(async () => {
+    expect(key(" ", { repeat: true }).defaultPrevented).toBe(true);
+  });
+  expect(button("Play loop").getAttribute("aria-pressed")).toBe("false");
+  expect(context.state).toBe("suspended");
+});
+
+test.each([{ ctrlKey: true }, { metaKey: true }, { altKey: true }, { isComposing: true }])(
+  "Space leaves modified or composing key events alone: %j",
+  async (modifiers) => {
+    act(() => surface().focus());
+    await act(async () => {
+      expect(key(" ", modifiers).defaultPrevented).toBe(false);
+    });
+    expect(button("Play loop").getAttribute("aria-pressed")).toBe("false");
+    expect(TestAudioContext.instances).toHaveLength(0);
+  },
+);
+
+test.each([
+  '<input aria-label="Typing" />',
+  '<textarea aria-label="Typing"></textarea>',
+  '<select aria-label="Choice"><option>One</option></select>',
+  '<div contenteditable="true"><span tabindex="0">Typing</span></div>',
+  '<a href="#">Link</a>',
+  "<details><summary>Details</summary></details>",
+  '<div role="button" tabindex="0"><span tabindex="0">Action</span></div>',
+])("Space leaves focused controls and editable content alone: %s", async (html) => {
+  const container = document.createElement("div");
+  container.innerHTML = html;
+  document.body.append(container);
+  const target = container.querySelector<HTMLElement>("span, input, textarea, select, a, summary")!;
+  act(() => target.focus());
+  expect(document.activeElement).toBe(target);
+  await act(async () => {
+    expect(key(" ").defaultPrevented).toBe(false);
+  });
+  expect(button("Play loop").getAttribute("aria-pressed")).toBe("false");
+  expect(TestAudioContext.instances).toHaveLength(0);
+});
+
+test("Space on a note's copy control does not toggle playback", async () => {
+  act(() => element('[data-light="1"]').focus());
+  act(() => button("Duplicate selected note").focus());
+  const before = notes().length;
+  await act(async () => {
+    expect(key(" ").defaultPrevented).toBe(false);
+  });
+  expect(TestAudioContext.instances).toHaveLength(0);
+  // happy-dom does not synthesize a native button click from keyboard events.
+  click(button("Duplicate selected note"));
+  expect(notes()).toHaveLength(before + 1);
+  expect(button("Play loop").getAttribute("aria-pressed")).toBe("false");
+});
+
+test("Space leaves the playback button's native activation alone", async () => {
+  act(() => button("Play loop").focus());
+  await act(async () => {
+    expect(key(" ").defaultPrevented).toBe(false);
+  });
+  expect(TestAudioContext.instances).toHaveLength(0);
+  await act(async () => button("Play loop").click());
+  expect(button("Pause loop").getAttribute("aria-pressed")).toBe("true");
+  expect(TestAudioContext.instances[0].state).toBe("running");
+});
+
+test("Space respects events already handled by another control", async () => {
+  const target = surface();
+  act(() => target.focus());
+  target.addEventListener("keydown", (event) => event.preventDefault(), { once: true });
+  await act(async () => key(" "));
+  expect(TestAudioContext.instances).toHaveLength(0);
+  expect(button("Play loop").getAttribute("aria-pressed")).toBe("false");
+});
+
+test("Space does not toggle playback while the help dialog is open", async () => {
+  click(element(".help-button"));
+  const dialog = element<HTMLDialogElement>("dialog");
+  expect(dialog.open).toBe(true);
+  // Focus the dialog itself rather than one of its native buttons.
+  dialog.tabIndex = -1;
+  act(() => dialog.focus());
+  await act(async () => {
+    expect(key(" ").defaultPrevented).toBe(false);
+  });
+  expect(TestAudioContext.instances).toHaveLength(0);
+  expect(button("Play loop").getAttribute("aria-pressed")).toBe("false");
+});
+
+test("Space ignores another press while audio startup is pending", async () => {
+  const pending = deferred();
+  const resume = vi
+    .spyOn(TestAudioContext.prototype, "resume")
+    .mockImplementationOnce(async function (this: TestAudioContext) {
+      await pending.promise;
+      this.state = "running";
+    });
+  key(" ");
+  expect(button("Play loop").disabled).toBe(true);
+  key(" ");
+  expect(resume).toHaveBeenCalledTimes(1);
+  await act(async () => pending.resolve());
+  expect(button("Pause loop").disabled).toBe(false);
+  expect(TestAudioContext.instances[0].state).toBe("running");
+});
+
 test("Play stays disabled until audio startup completes", async () => {
   const pending = deferred();
   vi.spyOn(TestAudioContext.prototype, "resume").mockImplementationOnce(async function (

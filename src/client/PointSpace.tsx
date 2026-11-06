@@ -19,7 +19,6 @@ type Props = {
   onBegin: (cancel: () => void) => GestureEdit;
   nextId: () => number;
   getPlayback: () => Playback;
-  onPlayback: () => void;
   renderSelection: (note: Note, focusSurface: () => void) => ReactNode;
 };
 
@@ -413,9 +412,6 @@ export function PointSpace(props: Props) {
       const id = ordered[next]?.id ?? null;
       props.onSelect(id);
       if (id !== null) elements.current.get(id)?.focus({ preventScroll: true });
-    } else if (event.key === " ") {
-      event.preventDefault();
-      props.onPlayback();
     } else if (event.key === "Escape") {
       props.onSelect(null);
       surface.current?.focus();

@@ -292,6 +292,34 @@ export function App() {
     }
   }
 
+  useEffect(() => {
+    function keyDown(event: globalThis.KeyboardEvent) {
+      if (
+        event.key !== " " ||
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey ||
+        guide.current?.open
+      )
+        return;
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest(
+          "input, textarea, select, a[href], summary, [contenteditable]:not([contenteditable='false']), button:not([data-light]), [role='button']",
+        )
+      )
+        return;
+      event.preventDefault();
+      if (!event.repeat) void togglePlayback();
+    }
+
+    window.addEventListener("keydown", keyDown);
+    return () => window.removeEventListener("keydown", keyDown);
+  });
+
   return (
     <main className="instrument" aria-label="Vamp musical instrument">
       <header className="masthead">
@@ -391,7 +419,6 @@ export function App() {
           onBegin={beginGesture}
           nextId={() => nextNote.current++}
           getPlayback={getPlayback}
-          onPlayback={() => void togglePlayback()}
           renderSelection={(note, focusSurface) => (
             <>
               <span
@@ -447,6 +474,7 @@ export function App() {
             disabled={busy}
             aria-label={playing ? "Pause loop" : "Play loop"}
             aria-busy={busy}
+            aria-keyshortcuts="Space"
             aria-pressed={playing}
             onClick={() => void togglePlayback()}
           >
