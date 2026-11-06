@@ -70,7 +70,7 @@ test("landing snaps both timing and pitch, wraps the loop seam, and is idempoten
   ]);
 });
 
-test("felt keys allow several different pitches at the same beat, all with audible events", () => {
+test("muted piano allows several different pitches at the same beat, all with audible events", () => {
   let document = add(documentOf(), { ...light, tone: 14 });
   document = add(document, { ...light, id: 2, tone: 15.2 });
   document = add(document, { ...light, id: 3, tone: 17 });

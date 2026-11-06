@@ -10,7 +10,7 @@ import {
 } from "./pattern";
 import type { CollisionFeedback, Pattern, Placement, Note } from "./pattern";
 import { Sequencer } from "./sequencer";
-import { DEFAULT_VOLUME, EMPTY_PLAYBACK } from "./score";
+import { DEFAULT_VOLUME, EMPTY_PLAYBACK, INSTRUMENTS } from "./score";
 
 type History = { present: Pattern; past: Pattern[]; future: Pattern[] };
 type IconName = "play" | "pause" | "undo" | "redo" | "clear" | "more" | "close" | "sound" | "mute";
@@ -406,7 +406,12 @@ export function App() {
           getPlayback={getPlayback}
           renderSelection={(note, focusSurface) => (
             <>
-              <span className="selected-pitch">{toneFor(note).note.name}</span>
+              <span className="selected-pitch" style={{ color: toneFor(note).color }}>
+                {toneFor(note).note.name}
+              </span>
+              <span className="selected-material">
+                {INSTRUMENTS[toneFor(note).instrument].name}
+              </span>
               <button
                 className="icon-button"
                 title="Remove · Delete"
@@ -535,7 +540,7 @@ export function App() {
             <dt>Let it ring</dt>
             <dd>
               Press Play. The lights bloom as their sounds unfold. Nothing changes unless you change
-              it. Higher notes change from bass through mallet and felt keys to glass.
+              it. Higher notes change from bass through mallet and muted piano to glass.
             </dd>
           </div>
           <div>

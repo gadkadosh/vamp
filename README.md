@@ -18,7 +18,7 @@ Open the URL printed by Vite, then press the central **Play** button to enable a
 
 The Living light design gives the instrument a full-screen, deep-blue field with circular, material-colored lights. Left to right is time in a two-measure loop; bottom to top is low to high pitch. There are no cameras, depth controls, input modes, or permanent pitch grids. Open **How to play** for the guide; **Sketch options** (the three dots) contains the note count, clear, and reset actions.
 
-Press **Play** to hear the starting phrase. Tap empty space to add a light; drag a light to change timing and pitch. A snapped landing ring and temporary alignment guides appear only while pressing to place or dragging a light, for both mouse and touch. There is no hover preview or temporary note-name label. The preview does not add or sound a note and disappears on release or cancellation. Selection strengthens the light's color and glow, without a surrounding ring. Select a light to reveal a remove button beside it; undo restores the previous gesture.
+Press **Play** to hear the starting phrase. Tap empty space to add a light; drag a light to change timing and pitch. A snapped landing ring and temporary alignment guides appear only while pressing to place or dragging a light, for both mouse and touch. There is no hover preview or temporary note-name label. The preview does not add or sound a note and disappears on release or cancellation. Selection strengthens the light's color and glow, without a surrounding ring. Select a light to reveal its pitch in the light’s color, its instrument name, and a remove button beside it; undo restores the previous gesture.
 
 ### Magnetic timing and pitch
 
@@ -36,7 +36,7 @@ Dragging is a local preview: the original music continues until a valid release,
 
 Keyboard: Tab into the space. **Page Up / Page Down** select the previous/next light in time order, with lower pitches first at the same beat, and wrap around the loop. On Mac laptops, use Fn + ↑ / ↓. Arrows select the first light if none is selected, then move the selection one rhythmic step left/right or one pitch up/down. Enter adds a light. Keyboard focus follows the selected light and uses a small frame; pointer selection does not show it. Delete/Backspace removes. **Escape** deselects from anywhere, preserving focus on controls outside the surface; an open menu or help dialog closes first, and an unfinished gesture is canceled before deselecting. **Space** plays or pauses from anywhere, including the surface and selected lights, except while typing, using another focused control, or viewing the help dialog. Holding Space does not repeatedly toggle playback. The surface has one Tab stop: the selected light, or the space itself when nothing is selected. Tab then visits the selected note’s remove button and leaves the surface. Navigation does not change the music or undo/redo history. Individual lights expose descriptive accessible names with their material, pitch, and beat position.
 
-The musical rules are deterministic. A single ascending tone axis passes through bass, mallet, felt keys, and glass materials, with color following material. Each voice occupies a distinct pitch range, so moving higher never drops the pitch when crossing a material boundary. The starting pattern adapts the original seed phrases to this axis.
+The musical rules are deterministic. A single ascending tone axis passes through bass, mallet, muted piano, and glass materials, with color following material. Each voice occupies a distinct pitch range, so moving higher never drops the pitch when crossing a material boundary. The starting pattern adapts the original seed phrases to this axis.
 
 Lights land on 32 timing positions and 25 pitches, without a preallocated number of dots:
 
@@ -44,10 +44,10 @@ Lights land on 32 timing positions and 25 pitches, without a preallocated number
 | ------------ | ------------------------------ |
 | Plucked bass | C2, D2, E2, G2, A2, C3         |
 | Mallet       | D3, E3, G3, A3, C4, D4, E4     |
-| Felt keys    | F4, G4, A4, B4, C5, D5, E5, G5 |
+| Muted piano  | F4, G4, A4, B4, C5, D5, E5, G5 |
 | Glass chimes | A5, C6, D6, E6                 |
 
-**Felt keys are polyphonic**: different notes at the same beat form a chord, and overlapping notes decay independently. Mallet and glass also permit chords.
+**Muted piano is polyphonic**: different notes at the same beat form a chord, and overlapping notes decay independently. Mallet and glass also permit chords.
 
 **Bass has one note per rhythmic step.** Occupied landing points turn red and highlight the conflicting light. A new conflicting placement is rejected; a conflicting drag returns to its previous location. Identical sounds at the same beat are also rejected rather than creating silent duplicates. These rules apply to placement, dragging, keyboard moves, and scattering. A conflicting operation leaves every existing light unchanged and creates no undo entry. No light is silently ignored, and nothing is automatically shifted to another beat.
 
@@ -55,7 +55,7 @@ Everything—including history—lives in memory in the current tab. Reloading r
 
 ## Audio and visualization
 
-Four synthesized acoustic sketches are available: mallet, felt keys, plucked bass, and glass chimes. Felt keys are the single melodic voice; there is no material switch. These are synthesized sketches, not recordings or physically accurate replicas.
+Four synthesized acoustic sketches are available: mallet, muted piano, plucked bass, and glass chimes. Muted piano is the single melodic voice; there is no material switch. These are synthesized sketches, not recordings or physically accurate replicas.
 
 All sounds share a two-measure 4/4 loop at 88 BPM in C major, with 32 sixteenth-note timing positions. Each material has its own natural decay, with no editable note lengths or visual tails. Bass damps at the next bass onset; other notes overlap independently. Notes can ring across the loop seam rather than being cut short. Lights bloom in their material color when they sound, with a faint sweep instead of a permanent timing ruler. Reduced motion uses illumination without expanding waves or a moving sweep. Each new loop re-articulates the phrase. Pause freezes the Web Audio clock and holds the lights; mute does not stop it. The visualization reads that same clock rather than running a separate animation timer.
 
