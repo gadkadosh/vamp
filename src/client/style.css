@@ -147,12 +147,6 @@ button svg {
   outline: none;
 }
 
-.point-space.is-keyboard:focus-visible {
-  outline: 1px solid var(--line);
-  outline-offset: -4px;
-  border-radius: 8px;
-}
-
 .point-space.is-dragging {
   cursor: grabbing;
 }
