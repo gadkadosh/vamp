@@ -1,4 +1,11 @@
-import { DEFAULT_VOLUME, EMPTY_PLAYBACK, INSTRUMENTS, STEP_COUNT, STEP_SECONDS } from "./score";
+import {
+  DEFAULT_VOLUME,
+  EMPTY_PLAYBACK,
+  INSTRUMENTS,
+  INSTRUMENT_IDS,
+  STEP_COUNT,
+  STEP_SECONDS,
+} from "./score";
 import type { InstrumentId, NoteOnset, Playback, TimedNote } from "./score";
 
 export class Sequencer {
@@ -12,13 +19,27 @@ export class Sequencer {
   private startTime: number | null = null;
   private timer: ReturnType<typeof setInterval> | undefined;
   private disposed = false;
+  private pendingTransition: Promise<void> | null = null;
   private getScore: () => TimedNote[];
 
   constructor(getScore: () => TimedNote[]) {
     this.getScore = getScore;
   }
 
-  async play() {
+  play() {
+    return this.transition(() => this.start());
+  }
+
+  pause() {
+    return this.transition(async () => {
+      if (this.disposed) return;
+      // Keep scheduling if suspension fails; a rejected Pause must leave playback intact.
+      await this.context?.suspend();
+      this.clearTimer();
+    });
+  }
+
+  private async start() {
     if (this.disposed || this.timer !== undefined) return;
     // Create and resume only from the Play gesture, never on page load.
     if (!this.context) {
@@ -26,7 +47,7 @@ export class Sequencer {
       this.output = this.context.createGain();
       this.output.gain.value = this.volume;
       this.output.connect(this.context.destination);
-      for (const { id } of INSTRUMENTS) {
+      for (const id of INSTRUMENT_IDS) {
         const channel = this.context.createGain();
         channel.connect(this.output);
         this.channels.set(id, channel);
@@ -42,10 +63,16 @@ export class Sequencer {
     this.timer = setInterval(this.schedule, 25);
   }
 
-  async pause() {
-    this.clearTimer();
-    // Freezing the audio clock preserves both the position and scheduled notes.
-    await this.context?.suspend();
+  // Run the first operation immediately to preserve the Play gesture's audio permission.
+  // Later commands run in order, even if an earlier transition failed.
+  private transition(action: () => Promise<void>): Promise<void> {
+    const result = this.pendingTransition ? this.pendingTransition.then(action, action) : action();
+    this.pendingTransition = result;
+    const clear = () => {
+      if (this.pendingTransition === result) this.pendingTransition = null;
+    };
+    void result.then(clear, clear);
+    return result;
   }
 
   // Expose only strikes whose audio-time onset has arrived, not future buffered notes.
@@ -72,6 +99,7 @@ export class Sequencer {
   }
 
   dispose() {
+    if (this.disposed) return;
     this.disposed = true;
     this.clearTimer();
     this.monoVoices.clear();
@@ -108,9 +136,10 @@ export class Sequencer {
     }
     starts.sort((a, b) => a.time - b.time);
     for (const { note, time } of starts) {
-      const instrument = INSTRUMENTS.find(({ id }) => id === note.instrument)!;
-      const channel = this.channels.get(instrument.id)!;
-      this.monoVoices.get(instrument.id)?.(time);
+      const instrument = INSTRUMENTS[note.instrument];
+      const channel = this.channels.get(note.instrument);
+      if (!channel) throw new Error(`Missing audio channel for ${note.instrument}`);
+      this.monoVoices.get(note.instrument)?.(time);
       const stop = instrument.start(
         this.context,
         channel,
@@ -118,7 +147,7 @@ export class Sequencer {
         time,
       );
       // Only bass returns a damper; polyphonic voices finish naturally.
-      if (stop) this.monoVoices.set(instrument.id, stop);
+      if (stop) this.monoVoices.set(note.instrument, stop);
       this.onsets.push({ note: { ...note }, time });
     }
     // A rolling, half-open audio-time window prevents duplicate strikes, handles

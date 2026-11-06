@@ -3,7 +3,7 @@ import { PointSpace } from "./PointSpace";
 import {
   compose,
   createPattern,
-  MATERIALS,
+  INSTRUMENT_LAYOUT,
   placeNote,
   noteLabel,
   toneFor,
@@ -11,7 +11,7 @@ import {
 } from "./pattern";
 import type { CollisionFeedback, Pattern, Placement, Note } from "./pattern";
 import { Sequencer } from "./sequencer";
-import { EMPTY_PLAYBACK } from "./score";
+import { DEFAULT_VOLUME, EMPTY_PLAYBACK, INSTRUMENTS } from "./score";
 
 type History = { present: Pattern; past: Pattern[]; future: Pattern[] };
 type IconName =
@@ -84,8 +84,8 @@ export function App() {
   const pattern = history.present;
   const score = useMemo(() => compose(pattern), [pattern]);
   const scoreRef = useRef(score);
-  const engine = useRef<Sequencer | null>(null);
-  const getPlayback = useCallback(() => engine.current?.getPlayback() ?? EMPTY_PLAYBACK, []);
+  const sequencerRef = useRef<Sequencer | null>(null);
+  const getPlayback = useCallback(() => sequencerRef.current?.getPlayback() ?? EMPTY_PLAYBACK, []);
   const [selectedId, setSelected] = useState<number | null>(null);
   const selected = pattern.notes.find((note) => note.id === selectedId);
   const nextNote = useRef(Math.max(...pattern.notes.map((note) => note.id), 0) + 1);
@@ -103,10 +103,10 @@ export function App() {
 
   useEffect(() => {
     const sequencer = new Sequencer(() => scoreRef.current);
-    engine.current = sequencer;
+    sequencerRef.current = sequencer;
     return () => {
       sequencer.dispose();
-      engine.current = null;
+      sequencerRef.current = null;
     };
   }, []);
 
@@ -271,17 +271,24 @@ export function App() {
   }, []);
 
   async function togglePlayback() {
-    if (!engine.current || busy) return;
+    const sequencer = sequencerRef.current;
+    if (!sequencer || busy) return;
     setBusy(true);
     setError("");
     try {
-      if (playing) await engine.current.pause();
-      else await engine.current.play();
+      if (playing) await sequencer.pause();
+      else await sequencer.play();
+      if (sequencerRef.current !== sequencer) return;
       setPlaying(!playing);
     } catch {
-      setError("Audio couldn’t start. Please try Play again.");
+      if (sequencerRef.current !== sequencer) return;
+      setError(
+        playing
+          ? "Audio couldn’t pause. Please try Pause again."
+          : "Audio couldn’t start. Please try Play again.",
+      );
     } finally {
-      setBusy(false);
+      if (sequencerRef.current === sequencer) setBusy(false);
     }
   }
 
@@ -394,7 +401,7 @@ export function App() {
               />
               <span className="selected-pitch">{toneFor(note).note.name}</span>
               <span className="selected-material">
-                {MATERIALS.find(({ instrument }) => instrument === toneFor(note).instrument)?.name}
+                {INSTRUMENTS[toneFor(note).instrument].name}
               </span>
               <button
                 className="icon-button"
@@ -451,7 +458,7 @@ export function App() {
           aria-label={muted ? "Unmute audio" : "Mute audio"}
           aria-pressed={muted}
           onClick={() => {
-            engine.current?.setVolume(muted ? 0.35 : 0);
+            sequencerRef.current?.setVolume(muted ? DEFAULT_VOLUME : 0);
             setMuted(!muted);
           }}
         >
@@ -493,8 +500,8 @@ export function App() {
         >
           <defs>
             <radialGradient id="guide-glow">
-              <stop stopColor={MATERIALS[2].color} stopOpacity=".3" />
-              <stop offset="1" stopColor={MATERIALS[2].color} stopOpacity="0" />
+              <stop stopColor={INSTRUMENT_LAYOUT[2].color} stopOpacity=".3" />
+              <stop offset="1" stopColor={INSTRUMENT_LAYOUT[2].color} stopOpacity="0" />
             </radialGradient>
           </defs>
           <path
@@ -510,13 +517,13 @@ export function App() {
             Higher
           </text>
           <circle cx="160" cy="53" r="40" fill="url(#guide-glow)" />
-          {MATERIALS.map((material, index) => (
+          {INSTRUMENT_LAYOUT.map((entry, index) => (
             <circle
-              key={material.instrument}
+              key={entry.instrument}
               cx={[86, 126, 160, 226][index]}
               cy={[77, 64, 53, 35][index]}
               r={index === 2 ? 5 : 4}
-              fill={material.color}
+              fill={entry.color}
             />
           ))}
         </svg>

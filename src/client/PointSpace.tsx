@@ -123,7 +123,8 @@ export function PointSpace(props: Props) {
 
   useLayoutEffect(() => {
     const element = canvas.current!;
-    const context = element.getContext("2d")!;
+    const context = element.getContext("2d");
+    if (!context) return;
     const ratio = Math.min(devicePixelRatio || 1, 2);
     // Let the notes illuminate the whole instrument, without clipping blooms at the field edge.
     const host = surface.current!.closest("main")!.getBoundingClientRect();
@@ -138,7 +139,8 @@ export function PointSpace(props: Props) {
 
   // Redraw committed scene changes; only playback and settling keep a frame loop alive.
   useLayoutEffect(() => {
-    const context = canvas.current!.getContext("2d")!;
+    const context = canvas.current!.getContext("2d");
+    if (!context) return;
     const bounds = canvasBounds.current;
     const toolbar = tools.current;
     let toolbarSize = toolbar ? { width: toolbar.offsetWidth, height: toolbar.offsetHeight } : null;
@@ -149,7 +151,7 @@ export function PointSpace(props: Props) {
       if (frame === null) frame = requestAnimationFrame(draw);
     }
 
-    function draw() {
+    const draw = () => {
       frame = null;
       const now = performance.now();
       const settling = motion.current;
@@ -184,7 +186,7 @@ export function PointSpace(props: Props) {
         toolbarPosition = { x, y };
       }
       if (scene.playing || motion.current) requestDraw();
-    }
+    };
 
     const remaining = scene.feedback ? scene.feedback.started + FEEDBACK_MS - performance.now() : 0;
     const feedbackTimer =

@@ -11,7 +11,7 @@ import {
 } from "../src/client/pattern";
 import type { Pattern, Note } from "../src/client/pattern";
 import { layoutNotes, locate, pick, SETTLE_MS } from "../src/client/space";
-import { STEP_COUNT } from "../src/client/score";
+import { INSTRUMENTS, pitchIndex, STEP_COUNT } from "../src/client/score";
 
 const light: Note = { id: 1, step: 3, tone: 7 };
 const documentOf = (...notes: Note[]): Pattern => ({ notes });
@@ -22,15 +22,43 @@ function add(document: Pattern, note: Note) {
   return result.document;
 }
 
-test("draft tone positions are continuous while sounding pitches ascend through four materials", () => {
+test("draft tone positions are continuous while sounding pitches ascend through four instruments", () => {
   expect(new Set(TONES.map((tone) => tone.instrument))).toEqual(
     new Set(["bass", "mallet", "keys", "glass"]),
   );
+  expect(TONES.map((tone) => tone.note.name)).toEqual([
+    "C2",
+    "D2",
+    "E2",
+    "G2",
+    "A2",
+    "C3",
+    "C4",
+    "D4",
+    "E4",
+    "F4",
+    "G4",
+    "A4",
+    "B4",
+    "C5",
+    "D5",
+    "E5",
+    "G5",
+    "A5",
+    "C6",
+  ]);
   for (const [index, tone] of TONES.entries()) {
-    expect(tone.row).toBeGreaterThanOrEqual(0);
+    expect(INSTRUMENTS[tone.instrument].notes[tone.row]).toEqual(tone.note);
     expect(tone.note.frequency).toBeGreaterThan(index ? TONES[index - 1].note.frequency : 0);
     expect(toneFor({ ...light, tone: index + 0.2 })).toEqual(tone);
   }
+});
+
+test("pitch lookup rejects an invalid instrument/pitch mapping with a clear error", () => {
+  expect(pitchIndex("mallet", "A4")).toBe(0);
+  expect(INSTRUMENTS.mallet.notes[pitchIndex("mallet", "A4")].frequency).toBe(440);
+  expect(() => pitchIndex("mallet", "C2")).toThrow("Unknown pitch C2 for mallet");
+  expect(() => pitchIndex("keys", "not a pitch")).toThrow("Unknown pitch not a pitch for keys");
 });
 
 test("landing snaps both timing and pitch, wraps the loop seam, and is idempotent", () => {

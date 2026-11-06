@@ -1,6 +1,14 @@
 import { vi } from "vite-plus/test";
-import { INSTRUMENTS } from "../src/client/score";
+import { INSTRUMENT_IDS } from "../src/client/score";
 import type { InstrumentId } from "../src/client/score";
+
+export function deferred() {
+  let resolve: () => void;
+  const promise = new Promise<void>((onResolve) => {
+    resolve = onResolve;
+  });
+  return { promise, resolve: () => resolve() };
+}
 
 function parameter(value = 0) {
   return {
@@ -118,7 +126,7 @@ export class TestAudioContext {
 }
 
 export function channel(context: TestAudioContext, id: InstrumentId) {
-  return context.gains[1 + INSTRUMENTS.findIndex((instrument) => instrument.id === id)];
+  return context.gains[1 + INSTRUMENT_IDS.indexOf(id)];
 }
 
 export function routesTo(

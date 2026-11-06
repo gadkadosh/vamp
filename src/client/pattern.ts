@@ -1,31 +1,37 @@
-import { INSTRUMENTS, STEP_COUNT } from "./score";
-import type { TimedNote } from "./score";
+import { INSTRUMENTS, INSTRUMENT_IDS, pitchIndex, STEP_COUNT } from "./score";
+import type { InstrumentId, TimedNote } from "./score";
 
-export const MATERIALS = [
+// Instrument order, exposed pitches, and colors on the ascending interface axis.
+export const INSTRUMENT_LAYOUT = [
   {
     instrument: "bass",
-    name: "Bass",
     color: "#6dcbb0",
     notes: ["C2", "D2", "E2", "G2", "A2", "C3"],
   },
-  { instrument: "mallet", name: "Mallet", color: "#efbb67", notes: ["C4", "D4", "E4"] },
+  { instrument: "mallet", color: "#efbb67", notes: ["C4", "D4", "E4"] },
   {
     instrument: "keys",
-    name: "Felt keys",
     color: "#e99db3",
     notes: ["F4", "G4", "A4", "B4", "C5", "D5", "E5"],
   },
-  { instrument: "glass", name: "Glass", color: "#a5b4f6", notes: ["G5", "A5", "C6"] },
-] as const;
-export const TONES = MATERIALS.flatMap((material) => {
-  const instrument = INSTRUMENTS.find(({ id }) => id === material.instrument)!;
-  return material.notes.map((name) => ({
-    instrument: material.instrument,
-    polyphonic: instrument.polyphonic,
-    color: material.color,
-    row: instrument.notes.findIndex((note) => note.name === name),
-    note: instrument.notes.find((note) => note.name === name)!,
-  }));
+  { instrument: "glass", color: "#a5b4f6", notes: ["G5", "A5", "C6"] },
+] as const satisfies readonly {
+  instrument: InstrumentId;
+  color: string;
+  notes: readonly string[];
+}[];
+export const TONES = INSTRUMENT_LAYOUT.flatMap((entry) => {
+  const instrument = INSTRUMENTS[entry.instrument];
+  return entry.notes.map((name) => {
+    const row = pitchIndex(entry.instrument, name);
+    return {
+      instrument: entry.instrument,
+      polyphonic: instrument.polyphonic,
+      color: entry.color,
+      row,
+      note: instrument.notes[row],
+    };
+  });
 });
 // Drafts move continuously; committed lights land on rhythmic and pitched positions.
 export type Note = { id: number; step: number; tone: number };
@@ -51,12 +57,14 @@ export const snapNote = (note: Note): Note => ({
 export function createPattern(): Pattern {
   let id = 0;
   const notes: Note[] = [];
-  for (const instrument of INSTRUMENTS) {
+  for (const instrumentId of INSTRUMENT_IDS) {
+    const instrument = INSTRUMENTS[instrumentId];
+    const candidates = TONES.map((tone, index) => ({ ...tone, index })).filter(
+      (tone) => tone.instrument === instrumentId,
+    );
+    if (!candidates.length) throw new Error(`No instrument layout for ${instrumentId}`);
     for (const [name, step] of instrument.seed) {
-      const frequency = instrument.notes.find((note) => note.name === name)!.frequency;
-      const candidates = TONES.map((tone, index) => ({ ...tone, index })).filter(
-        (tone) => tone.instrument === instrument.id,
-      );
+      const frequency = instrument.notes[pitchIndex(instrumentId, name)].frequency;
       const closest = candidates.reduce((a, b) =>
         Math.abs(a.note.frequency - frequency) <= Math.abs(b.note.frequency - frequency) ? a : b,
       );
@@ -114,6 +122,6 @@ export function moveNote(note: Note, stepDelta: number, toneDelta: number): Note
 }
 
 export function noteLabel(note: Note): string {
-  const instrument = INSTRUMENTS.find(({ id }) => id === toneFor(note).instrument)!;
+  const instrument = INSTRUMENTS[toneFor(note).instrument];
   return `Note ${note.id}: ${instrument.name}, ${toneFor(note).note.name}, beat position ${soundingStep(note.step) + 1} of ${STEP_COUNT}`;
 }
