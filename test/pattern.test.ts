@@ -26,27 +26,19 @@ test("draft tone positions are continuous while sounding pitches ascend through 
   expect(new Set(TONES.map((tone) => tone.instrument))).toEqual(
     new Set(["bass", "mallet", "keys", "glass"]),
   );
-  expect(TONES.map((tone) => tone.note.name)).toEqual([
-    "C2",
-    "D2",
-    "E2",
-    "G2",
-    "A2",
-    "C3",
-    "C4",
-    "D4",
-    "E4",
-    "F4",
-    "G4",
-    "A4",
-    "B4",
-    "C5",
-    "D5",
-    "E5",
-    "G5",
-    "A5",
-    "C6",
-  ]);
+  expect(
+    Object.fromEntries(
+      Object.keys(INSTRUMENTS).map((instrument) => [
+        instrument,
+        TONES.filter((tone) => tone.instrument === instrument).map((tone) => tone.note.name),
+      ]),
+    ),
+  ).toEqual({
+    bass: ["C2", "D2", "E2", "G2", "A2", "C3"],
+    mallet: ["D3", "E3", "G3", "A3", "C4", "D4", "E4"],
+    keys: ["F4", "G4", "A4", "B4", "C5", "D5", "E5", "G5"],
+    glass: ["A5", "C6", "D6", "E6"],
+  });
   for (const [index, tone] of TONES.entries()) {
     expect(INSTRUMENTS[tone.instrument].notes[tone.row]).toEqual(tone.note);
     expect(tone.note.frequency).toBeGreaterThan(index ? TONES[index - 1].note.frequency : 0);
@@ -79,9 +71,9 @@ test("landing snaps both timing and pitch, wraps the loop seam, and is idempoten
 });
 
 test("muted piano allows several different pitches at the same beat, all with audible events", () => {
-  let document = add(documentOf(), { ...light, tone: 10 });
-  document = add(document, { ...light, id: 2, tone: 11.2 });
-  document = add(document, { ...light, id: 3, tone: 13 });
+  let document = add(documentOf(), { ...light, tone: 14 });
+  document = add(document, { ...light, id: 2, tone: 15.2 });
+  document = add(document, { ...light, id: 3, tone: 17 });
   const felt = compose(document);
   expect(felt).toHaveLength(3);
   expect(felt.map((note) => note.noteId)).toEqual([1, 2, 3]);
@@ -116,7 +108,8 @@ test("moving into a bass conflict preserves the original document", () => {
 });
 
 test("identical sounds flash existing lights rather than keeping silent duplicates, for every material", () => {
-  for (const tone of [0, 7, 10, 17]) {
+  for (const instrument of Object.keys(INSTRUMENTS)) {
+    const tone = TONES.findIndex((tone) => tone.instrument === instrument);
     const original = { ...light, tone };
     const document = documentOf(original);
     const result = placeNote(document, { ...original, id: 2, step: 3.1, tone: tone + 0.2 });
@@ -135,7 +128,7 @@ test("every accepted light contributes exactly one note and one hit target", () 
     const result = placeNote(document, {
       id,
       step: (id * 0.37) % 32,
-      tone: (id * 0.071) % 18,
+      tone: (id * 0.097) % TONES.length,
     });
     document = result.document;
   }
@@ -243,7 +236,7 @@ test("the seed has no conflicting or silent lights and projection never changes 
     ["keys", "E5", 30],
     ["bass", "C2", 0],
     ["bass", "G2", 16],
-    ["glass", "G5", 10],
+    ["glass", "A5", 10],
     ["glass", "C6", 26],
   ]);
   expect(score).toHaveLength(document.notes.length);

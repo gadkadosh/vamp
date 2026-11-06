@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { PointSpace } from "./PointSpace";
 import {
   compose,
@@ -116,19 +116,8 @@ export function App() {
       if (!menuAnchor.current?.contains(event.target as Node)) setMenu(false);
     }
 
-    function keyDown(event: globalThis.KeyboardEvent) {
-      if (event.key === "Escape") {
-        setMenu(false);
-        menuTrigger.current?.focus();
-      }
-    }
-
     document.addEventListener("pointerdown", outside);
-    document.addEventListener("keydown", keyDown);
-    return () => {
-      document.removeEventListener("pointerdown", outside);
-      document.removeEventListener("keydown", keyDown);
-    };
+    return () => document.removeEventListener("pointerdown", outside);
   }, [menu]);
 
   function apply(next: History) {
@@ -237,23 +226,6 @@ export function App() {
     setMessage("One gesture forward.");
   }
 
-  useEffect(() => {
-    function keyDown(event: globalThis.KeyboardEvent) {
-      if (
-        guide.current?.open ||
-        !(event.metaKey || event.ctrlKey) ||
-        event.key.toLowerCase() !== "z"
-      )
-        return;
-      event.preventDefault();
-      if (event.shiftKey) redo();
-      else undo();
-    }
-
-    window.addEventListener("keydown", keyDown);
-    return () => window.removeEventListener("keydown", keyDown);
-  }, []);
-
   async function togglePlayback() {
     const sequencer = sequencerRef.current;
     if (!sequencer || busy) return;
@@ -276,33 +248,62 @@ export function App() {
     }
   }
 
-  useEffect(() => {
-    function keyDown(event: globalThis.KeyboardEvent) {
+  const onShortcut = useEffectEvent((event: globalThis.KeyboardEvent) => {
+    if (guide.current?.open) return;
+    if (event.key === "Escape") {
       if (
-        event.key !== " " ||
         event.defaultPrevented ||
         event.isComposing ||
         event.ctrlKey ||
         event.metaKey ||
         event.altKey ||
-        guide.current?.open
+        event.repeat
       )
         return;
-      const target = event.target;
-      if (
-        target instanceof Element &&
-        target.closest(
-          "input, textarea, select, a[href], summary, [contenteditable]:not([contenteditable='false']), button:not([data-light]), [role='button']",
-        )
-      )
-        return;
-      event.preventDefault();
-      if (!event.repeat) void togglePlayback();
+      if (menu) {
+        event.preventDefault();
+        setMenu(false);
+        menuTrigger.current?.focus();
+      } else if (cancelGesture()) {
+        event.preventDefault();
+      } else if (selected) {
+        event.preventDefault();
+        setSelected(null);
+      }
+      return;
     }
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+      event.preventDefault();
+      if (event.shiftKey) redo();
+      else undo();
+      return;
+    }
+    if (
+      event.key !== " " ||
+      event.defaultPrevented ||
+      event.isComposing ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.altKey
+    )
+      return;
+    const target = event.target;
+    if (
+      target instanceof Element &&
+      target.closest(
+        "input, textarea, select, a[href], summary, [contenteditable]:not([contenteditable='false']), button:not([data-light]), [role='button']",
+      )
+    )
+      return;
+    event.preventDefault();
+    if (!event.repeat) void togglePlayback();
+  });
 
+  useEffect(() => {
+    const keyDown = (event: globalThis.KeyboardEvent) => onShortcut(event);
     window.addEventListener("keydown", keyDown);
     return () => window.removeEventListener("keydown", keyDown);
-  });
+  }, []);
 
   return (
     <main className="instrument" aria-label="Vamp musical instrument">
