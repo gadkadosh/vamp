@@ -230,6 +230,54 @@ test("Undo cancels scattering without undoing the preceding edit or letting rele
   expect(notes()).toEqual(before);
 });
 
+test("selecting and deselecting a light never enables Undo, even while pressed", () => {
+  const before = notes();
+  const light = element('[data-light="1"]');
+  for (const selected of [true, false]) {
+    pointer("pointerdown", 0, malletC4, light);
+    expect(button("Undo").disabled).toBe(true);
+    pointer("pointerup", 0, malletC4);
+    expect(light.getAttribute("aria-pressed")).toBe(String(selected));
+    expect(button("Undo").disabled).toBe(true);
+    expect(button("Redo").disabled).toBe(true);
+    expect(notes()).toEqual(before);
+  }
+});
+
+test("selection preserves the existing undo and redo history", () => {
+  const seed = notes();
+  add(2, 9);
+  const edited = notes();
+  add(0, malletC4);
+  expect(button("Undo").disabled).toBe(false);
+  click(button("Undo"));
+  expect(notes()).toEqual(seed);
+  pointer("pointerdown", 0, malletC4);
+  expect(button("Undo").disabled).toBe(true);
+  expect(button("Redo").disabled).toBe(false);
+  pointer("pointerup", 0, malletC4);
+  expect(button("Undo").disabled).toBe(true);
+  click(button("Redo"));
+  expect(notes()).toEqual(edited);
+});
+
+test("Undo becomes available only when a selection press turns into a drag", () => {
+  const before = notes();
+  pointer("pointerdown", 0, malletC4);
+  expect(button("Undo").disabled).toBe(true);
+  const position = locate({ id: 1, step: 0, tone: malletC4 }, size);
+  pointer("pointermove", 0, malletC4, surface(), { clientX: position.x + 2 });
+  expect(button("Undo").disabled).toBe(true);
+  pointer("pointermove", 2, malletC4);
+  expect(button("Undo").disabled).toBe(false);
+  click(button("Undo"));
+  expectFinished();
+  expect(button("Undo").disabled).toBe(true);
+  pointer("pointerup", 2, malletC4);
+  expect(notes()).toEqual(before);
+  expect(button("Redo").disabled).toBe(true);
+});
+
 test("Undo can cancel the first gesture even when no completed history exists", () => {
   const seed = notes();
   expect(button("Undo").disabled).toBe(true);
