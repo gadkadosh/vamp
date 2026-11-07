@@ -22,6 +22,7 @@ type Props = {
 };
 
 type GestureEdit = {
+  activate: () => void;
   place: (note: Note) => Placement | null;
   commit: () => void;
   cancel: () => void;
@@ -189,6 +190,8 @@ export function PointSpace(props: Props) {
     };
     event.currentTarget.setPointerCapture(event.pointerId);
     setDragging(true);
+    // A press on an existing light is only selection until it becomes a drag.
+    if (!note) gesture.current.edit.activate();
     if (paint) {
       surface.current?.focus();
       gesture.current.edit.place(newNote(position.x, position.y));
@@ -220,6 +223,7 @@ export function PointSpace(props: Props) {
     } else if (draftRef.current) {
       active.moved ||= Math.hypot(position.x - active.last.x, position.y - active.last.y) > 5;
       if (!active.moved) return;
+      active.edit.activate();
       updateDraft({
         ...draftRef.current,
         ...pick(position.x - active.grab.x, position.y - active.grab.y, size),

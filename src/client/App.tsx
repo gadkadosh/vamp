@@ -64,7 +64,7 @@ export function App() {
   const gesture = useRef<{ before: History; selected: number | null; cancel: () => void } | null>(
     null,
   );
-  const [gesturing, setGesturing] = useState(false);
+  const [hasPendingEdit, setHasPendingEdit] = useState(false);
   const pattern = history.present;
   const score = useMemo(() => compose(pattern), [pattern]);
   const scoreRef = useRef(score);
@@ -129,7 +129,7 @@ export function App() {
     const active = gesture.current;
     if (!active) return false;
     gesture.current = null;
-    setGesturing(false);
+    setHasPendingEdit(false);
     apply(active.before);
     setSelected(active.selected);
     setFeedback(null);
@@ -142,13 +142,15 @@ export function App() {
     cancelGesture();
     const active = { before: historyRef.current, selected: selectedId, cancel };
     gesture.current = active;
-    setGesturing(true);
     return {
+      activate: () => {
+        if (gesture.current === active) setHasPendingEdit(true);
+      },
       place: (note: Note) => (gesture.current === active ? place(note, true) : null),
       commit: () => {
         if (gesture.current !== active) return;
         gesture.current = null;
-        setGesturing(false);
+        setHasPendingEdit(false);
         const present = historyRef.current.present;
         if (present !== active.before.present) {
           apply({
@@ -316,7 +318,7 @@ export function App() {
             className="icon-button"
             title="Undo · ⌘/Ctrl Z"
             aria-label="Undo"
-            disabled={!gesturing && !history.past.length}
+            disabled={!hasPendingEdit && !history.past.length}
             onClick={undo}
           >
             <Icon name="undo" />
