@@ -76,6 +76,8 @@ Vite+ is project-local; its CLI is also available through `pnpm exec vp`. Worker
 
 The smoke test uses Wrangler’s test harness, independently of Cloudflare’s Vitest pool adapter, which does not yet support Vite+’s bundled Vitest version.
 
+GitHub Actions runs `pnpm check`, `pnpm test --run`, and `pnpm build` on pull requests and pushes to `main`, using Node.js 24 and pnpm 12.16.1. CI installs from the frozen lockfile and does not deploy or require Cloudflare credentials. Actions are pinned to commit SHAs; Dependabot opens weekly pull requests to update them, without automatic merging.
+
 ## Structure
 
 - `src/client/main.tsx`, `style.css`: Application bootstrap and styling.
