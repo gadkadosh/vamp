@@ -4,6 +4,9 @@ import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import { App } from "../../src/client/App";
+import { Instrument } from "../../src/client/Instrument";
+import type { EditingSession } from "../../src/client/editing";
+import { useSoloSession } from "../../src/client/useSoloSession";
 import { locate } from "../../src/client/space";
 import { TONES } from "../../src/client/pattern";
 import { DEFAULT_VOLUME, STEP_SECONDS } from "../../src/client/score";
@@ -209,6 +212,59 @@ function expectFinished() {
   expect(surface().classList.contains("is-dragging")).toBe(false);
   expect(surface().hasPointerCapture(1)).toBe(false);
 }
+
+async function observeSession() {
+  let session: EditingSession;
+  function Solo() {
+    session = useSoloSession();
+    return createElement(Instrument, { session });
+  }
+  await act(async () => root.render(createElement(StrictMode, null, createElement(Solo))));
+  return () => session;
+}
+
+test("scattering stays a local preview until release commits one edit to the session", async () => {
+  const getSession = await observeSession();
+  const before = getSession().pattern;
+  paint();
+  expect(notes()).toHaveLength(before.notes.length + 2);
+  expect(getSession().pattern).toBe(before);
+  expect(getSession().canUndo).toBe(false);
+  key("Escape");
+  expect(getSession().pattern).toBe(before);
+  expect(notes()).toHaveLength(before.notes.length);
+  paint();
+  pointer("pointerup", 8, 10);
+  const committed = getSession().pattern;
+  expect(committed.notes).toHaveLength(before.notes.length + 2);
+  click(button("Undo"));
+  expect(getSession().pattern).toBe(before);
+  expect(button("Undo").disabled).toBe(true);
+  click(button("Redo"));
+  expect(getSession().pattern).toBe(committed);
+  expect(notes()).toHaveLength(committed.notes.length);
+});
+
+test("canceling a preview does not roll back a newer committed pattern", async () => {
+  const getSession = await observeSession();
+  const before = getSession().pattern;
+  paint();
+  const note = { id: getSession().nextId(), step: 12, tone: 9 };
+  act(() => getSession().edit({ type: "place", notes: [note] }));
+  const committed = getSession().pattern;
+  expect(committed.notes).toEqual([...before.notes, note]);
+  key("Escape");
+  expectFinished();
+  expect(getSession().pattern).toBe(committed);
+  expect(notes()).toHaveLength(committed.notes.length);
+  expect(element(`[data-light="${note.id}"]`).getAttribute("aria-label")).toContain(
+    "beat position 13 of 32",
+  );
+  pointer("pointerup", 8, 10);
+  expect(getSession().pattern).toBe(committed);
+  click(button("Undo"));
+  expect(getSession().pattern).toBe(before);
+});
 
 test("Undo cancels scattering without undoing the preceding edit or letting release recommit it", () => {
   const seed = notes();
