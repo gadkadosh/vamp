@@ -666,6 +666,24 @@ test("Escape leaves the help dialog's native dismissal alone without deselecting
   expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("false");
 });
 
+test("native help dismissal restores shortcuts and allows reopening", async () => {
+  act(() => element('[data-light="1"]').focus());
+  click(element(".help-button"));
+  const dialog = element<HTMLDialogElement>("dialog");
+  expect(dialog.open).toBe(true);
+
+  await act(async () => dialog.close());
+  expect(dialog.open).toBe(false);
+  act(() => button("Mute audio").focus());
+  key("Escape");
+  expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("false");
+
+  click(element(".help-button"));
+  expect(dialog.open).toBe(true);
+  click(element(".guide-done"));
+  expect(dialog.open).toBe(false);
+});
+
 test.each([{ ctrlKey: true }, { metaKey: true }, { altKey: true }, { isComposing: true }])(
   "Escape leaves modified or composing key events alone: %j",
   (modifiers) => {

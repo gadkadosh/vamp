@@ -1,59 +1,13 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { HelpDialog } from "./HelpDialog";
+import { Icon } from "./Icon";
 import { PointSpace } from "./PointSpace";
-import {
-  compose,
-  createPattern,
-  INSTRUMENT_LAYOUT,
-  placeNote,
-  noteLabel,
-  toneFor,
-} from "./pattern";
+import { compose, createPattern, placeNote, noteLabel, toneFor } from "./pattern";
 import type { CollisionFeedback, Pattern, Placement, Note } from "./pattern";
 import { Sequencer } from "./sequencer";
 import { DEFAULT_VOLUME, EMPTY_PLAYBACK, INSTRUMENTS } from "./score";
 
 type History = { present: Pattern; past: Pattern[]; future: Pattern[] };
-type IconName = "play" | "pause" | "undo" | "redo" | "clear" | "more" | "close" | "sound" | "mute";
-
-function Icon({ name }: { name: IconName }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      {name === "play" ? (
-        <path d="m9 5 10 7-10 7Z" fill="currentColor" stroke="none" />
-      ) : name === "pause" ? (
-        <path d="M9 6v12M16 6v12" strokeWidth="3" />
-      ) : name === "undo" ? (
-        <path d="m8 5-5 5 5 5M3 10h10a6 6 0 0 1 0 12" />
-      ) : name === "redo" ? (
-        <path d="m16 5 5 5-5 5m5-5H11a6 6 0 0 0 0 12" />
-      ) : name === "clear" ? (
-        <path d="M4 7h16M9 3h6M6 7l1 14h10l1-14M10 11v6m4-6v6" />
-      ) : name === "more" ? (
-        <path d="M5 12h.01M12 12h.01M19 12h.01" strokeWidth="3" />
-      ) : name === "close" ? (
-        <path d="m6 6 12 12M18 6 6 18" />
-      ) : (
-        <>
-          <path d="m10 5-5 4H2v6h3l5 4Z" />
-          {name === "sound" ? (
-            <path d="M14 8a6 6 0 0 1 0 8m4-12a11 11 0 0 1 0 16" />
-          ) : (
-            <path d="m15 9 6 6m0-6-6 6" />
-          )}
-        </>
-      )}
-    </svg>
-  );
-}
-
 export function App() {
   const [history, setHistory] = useState<History>(() => ({
     present: createPattern(),
@@ -80,7 +34,6 @@ export function App() {
   const [menu, setMenu] = useState(false);
   const menuAnchor = useRef<HTMLDivElement>(null);
   const menuTrigger = useRef<HTMLButtonElement>(null);
-  const guide = useRef<HTMLDialogElement>(null);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState<CollisionFeedback | null>(null);
   const [message, setMessage] = useState("");
@@ -103,11 +56,6 @@ export function App() {
     const timer = setTimeout(() => setMessage(""), 4000);
     return () => clearTimeout(timer);
   }, [message]);
-
-  useEffect(() => {
-    if (help) guide.current?.showModal();
-    else guide.current?.close();
-  }, [help]);
 
   useEffect(() => {
     if (!menu) return;
@@ -251,7 +199,7 @@ export function App() {
   }
 
   const onShortcut = useEffectEvent((event: globalThis.KeyboardEvent) => {
-    if (guide.current?.open) return;
+    if (help) return;
     if (event.key === "Escape") {
       if (
         event.defaultPrevented ||
@@ -475,95 +423,7 @@ export function App() {
         {selected ? noteLabel(selected) : "No note selected."}
       </p>
 
-      <dialog
-        ref={guide}
-        className="discovery"
-        aria-labelledby="guide-title"
-        onClose={() => setHelp(false)}
-      >
-        <button
-          className="icon-button close-guide"
-          aria-label="Close guide"
-          onClick={() => setHelp(false)}
-        >
-          <Icon name="close" />
-        </button>
-        <h2 id="guide-title">Leave a little light.</h2>
-        <p className="guide-intro">
-          Every light is a sound.
-          <br />
-          Every loop is another chance to listen.
-        </p>
-        <svg
-          className="guide-diagram"
-          viewBox="0 0 330 125"
-          aria-label="Time runs left to right, pitch rises upwards"
-          role="img"
-        >
-          <defs>
-            <radialGradient id="guide-glow">
-              <stop stopColor={INSTRUMENT_LAYOUT[2].color} stopOpacity=".3" />
-              <stop offset="1" stopColor={INSTRUMENT_LAYOUT[2].color} stopOpacity="0" />
-            </radialGradient>
-          </defs>
-          <path
-            d="M28 95H307m-5-4 5 4-5 4M28 95V18m-4 5 4-5 4 5"
-            stroke="#80938e"
-            strokeWidth=".8"
-            fill="none"
-          />
-          <text x="293" y="116">
-            Later
-          </text>
-          <text x="41" y="25">
-            Higher
-          </text>
-          <circle cx="160" cy="53" r="40" fill="url(#guide-glow)" />
-          {INSTRUMENT_LAYOUT.map((entry, index) => (
-            <circle
-              key={entry.instrument}
-              cx={[86, 126, 160, 226][index]}
-              cy={[77, 64, 53, 35][index]}
-              r={index === 2 ? 5 : 4}
-              fill={entry.color}
-            />
-          ))}
-        </svg>
-        <dl>
-          <div>
-            <dt>Make a mark</dt>
-            <dd>
-              Tap the space to add a light. Drag one to change when it plays and how high it sounds.
-              Release and it finds its place. Shift-drag to scatter a trail. Escape or Undo cancels
-              an unfinished gesture.
-            </dd>
-          </div>
-          <div>
-            <dt>Let it ring</dt>
-            <dd>
-              Press Play. The lights bloom as their sounds unfold. Nothing changes unless you change
-              it. Higher notes change from bass through mallet and muted piano to glass.
-            </dd>
-          </div>
-          <div>
-            <dt>Keep or take away</dt>
-            <dd>
-              Select a light to remove it. Tap it again to deselect. Undo brings it back. Occupied
-              bass beats and identical sounds flash instead of adding a duplicate.
-            </dd>
-          </div>
-        </dl>
-        <p className="guide-footnote">
-          Just this tab. Nothing is saved.
-          <br />
-          Tab into the space. Page Up / Down select a light; arrows move it.
-          <br />
-          On Mac laptops, use Fn + ↑ / ↓ to select.
-        </p>
-        <button className="guide-done" onClick={() => setHelp(false)}>
-          Let’s play
-        </button>
-      </dialog>
+      <HelpDialog open={help} onClose={() => setHelp(false)} />
     </main>
   );
 }
