@@ -8,10 +8,10 @@ import {
   snapNote,
   TONES,
   toneFor,
-} from "../src/client/pattern";
-import type { Pattern, Note } from "../src/client/pattern";
+} from "../src/shared/pattern";
+import type { Pattern, Note } from "../src/shared/pattern";
 import { layoutNotes, locate, pick, SETTLE_MS } from "../src/client/space";
-import { INSTRUMENTS, pitchIndex, STEP_COUNT } from "../src/client/score";
+import { INSTRUMENTS, pitchIndex, STEP_COUNT } from "../src/shared/score";
 
 const light: Note = { id: 1, step: 3, tone: 7 };
 const documentOf = (...notes: Note[]): Pattern => ({ notes });
@@ -148,8 +148,8 @@ test("every accepted light contributes exactly one note and one hit target", () 
   }
   const points = layoutNotes(document.notes, { width: 900, height: 720 });
   expect(points).toHaveLength(document.notes.length);
-  expect(points.map(({ note }) => note.id).sort((a, b) => a - b)).toEqual(
-    document.notes.map(({ id }) => id),
+  expect(new Set(points.map(({ note }) => note.id))).toEqual(
+    new Set(document.notes.map(({ id }) => id)),
   );
 });
 

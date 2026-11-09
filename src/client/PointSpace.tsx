@@ -1,22 +1,23 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactNode } from "react";
-import type { Playback } from "./score";
-import { moveNote, noteLabel } from "./pattern";
-import type { CollisionFeedback, Pattern, Placement, Note } from "./pattern";
+import type { Playback } from "../shared/score";
+import { moveNote, noteLabel } from "../shared/pattern";
+import type { CollisionFeedback, Pattern, Placement, Note, NoteId } from "../shared/pattern";
 import { layoutNotes, pick, SETTLE_MS } from "./space";
 import type { Size } from "./space";
 import { useSpaceRenderer } from "./useSpaceRenderer";
 
 type Props = {
   document: Pattern;
-  selected: number | null;
+  readOnly: boolean;
+  selected: NoteId | null;
   playing: boolean;
   feedback: CollisionFeedback | null;
-  onSelect: (id: number | null) => void;
+  onSelect: (id: NoteId | null) => void;
   onPlace: (note: Note) => Placement;
   onEdit: (change: (document: Pattern) => Pattern) => Pattern;
   onBegin: (cancel: () => void) => GestureEdit;
-  nextId: () => number;
+  nextId: () => NoteId;
   getPlayback: () => Playback;
   renderSelection: (note: Note, focusSurface: () => void) => ReactNode;
 };
@@ -142,7 +143,7 @@ export function PointSpace(props: Props) {
     if (active) releasePointer(active.pointer);
   }
 
-  function remove(id: number) {
+  function remove(id: NoteId) {
     props.onEdit((document) =>
       document.notes.some((note) => note.id === id)
         ? { ...document, notes: document.notes.filter((note) => note.id !== id) }
@@ -153,7 +154,7 @@ export function PointSpace(props: Props) {
   }
 
   function pointerDown(event: PointerEvent<HTMLDivElement>) {
-    if (gesture.current || (event.button !== 0 && event.button !== 2)) return;
+    if (props.readOnly || gesture.current || (event.button !== 0 && event.button !== 2)) return;
     const position = coordinates(event);
     // Overlapping buttons receive events in DOM order, not by proximity to the visible lights.
     const points = layoutNotes(props.document.notes, size, motion.current, performance.now());
@@ -272,9 +273,7 @@ export function PointSpace(props: Props) {
     const note = document.notes.find((item) => item.id === props.selected);
     if (direction) {
       event.preventDefault();
-      const ordered = [...document.notes].sort(
-        (a, b) => a.step - b.step || a.tone - b.tone || a.id - b.id,
-      );
+      const ordered = [...document.notes].sort((a, b) => a.step - b.step || a.tone - b.tone);
       const index = ordered.findIndex(({ id }) => id === props.selected);
       let next: number;
       if (index < 0) {
@@ -285,6 +284,8 @@ export function PointSpace(props: Props) {
       const id = ordered[next]?.id ?? null;
       props.onSelect(id);
       if (id !== null) elements.current.get(id)?.focus({ preventScroll: true });
+    } else if (props.readOnly) {
+      return;
     } else if (event.key === "Enter") {
       event.preventDefault();
       add(size.width * 0.5, size.height * 0.5);
@@ -311,6 +312,7 @@ export function PointSpace(props: Props) {
         tabIndex={selected ? -1 : 0}
         role="group"
         aria-label="Musical surface"
+        aria-disabled={props.readOnly}
         aria-describedby="space-instructions"
         aria-keyshortcuts="PageUp PageDown"
         onBlur={(event) => {
@@ -360,9 +362,9 @@ export function PointSpace(props: Props) {
           around the loop. Enter adds; arrows select a light, then move it one timing step or pitch.
           Select a light to remove it using the button beside it. Keyboard focus uses a small frame.
           Delete removes; Escape deselects from anywhere; Space plays or pauses. Tab leaves the
-          surface and its selected controls. Undo restores the previous gesture, or cancels the
-          current gesture before it is released. Escape closes an open menu or help dialog first, or
-          cancels an unfinished gesture before deselecting.
+          surface and its selected controls. In Solo mode, Undo restores the previous gesture, or
+          cancels the current gesture before it is released. Escape closes an open menu or help
+          dialog first, or cancels an unfinished gesture before deselecting.
         </p>
       </div>
       {selected && !dragging && (

@@ -2,20 +2,26 @@ import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } fro
 import { HelpDialog } from "./HelpDialog";
 import { Icon } from "./Icon";
 import { PointSpace } from "./PointSpace";
-import { compose, createPattern, placeNote, noteLabel, toneFor } from "./pattern";
-import type { CollisionFeedback, Pattern, Placement, Note } from "./pattern";
+import { compose, createPattern, placeNote, noteLabel, toneFor } from "../shared/pattern";
+import type { CollisionFeedback, Pattern, Placement, Note, NoteId } from "../shared/pattern";
 import { Sequencer } from "./sequencer";
-import { DEFAULT_VOLUME, EMPTY_PLAYBACK, INSTRUMENTS } from "./score";
+import { DEFAULT_VOLUME, EMPTY_PLAYBACK, INSTRUMENTS } from "../shared/score";
+import { applyChanges, changesBetween } from "../shared/room";
+import type { RoomState } from "../shared/room";
+import { useRoom } from "./useRoom";
 
 type History = { present: Pattern; past: Pattern[]; future: Pattern[] };
 export function App() {
+  const [solo, setSolo] = useState(() => window.location.pathname === "/solo");
+  const soloSketch = useRef<History | null>(null);
+  const latest = useRef<RoomState>({ revision: 0, pattern: { notes: [] } });
   const [history, setHistory] = useState<History>(() => ({
-    present: createPattern(),
+    present: solo ? createPattern() : { notes: [] },
     past: [],
     future: [],
   }));
   const historyRef = useRef(history);
-  const gesture = useRef<{ before: History; selected: number | null; cancel: () => void } | null>(
+  const gesture = useRef<{ before: History; selected: NoteId | null; cancel: () => void } | null>(
     null,
   );
   const [hasPendingEdit, setHasPendingEdit] = useState(false);
@@ -24,9 +30,9 @@ export function App() {
   const scoreRef = useRef(score);
   const sequencerRef = useRef<Sequencer | null>(null);
   const getPlayback = useCallback(() => sequencerRef.current?.getPlayback() ?? EMPTY_PLAYBACK, []);
-  const [selectedId, setSelected] = useState<number | null>(null);
+  const [selectedId, setSelected] = useState<NoteId | null>(null);
   const selected = pattern.notes.find((note) => note.id === selectedId);
-  const nextNote = useRef(Math.max(...pattern.notes.map((note) => note.id), 0) + 1);
+  const nextNote = useRef(createPattern().notes.length + 1);
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -37,6 +43,46 @@ export function App() {
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState<CollisionFeedback | null>(null);
   const [message, setMessage] = useState("");
+  const room = useRoom(
+    !solo,
+    (update, pending) => {
+      latest.current = update.state;
+      if (!gesture.current && !pending) {
+        apply({ present: update.state.pattern, past: [], future: [] });
+      }
+      if (update.error) setMessage(update.error);
+    },
+    () => {
+      cancelGesture();
+      apply({ present: latest.current.pattern, past: [], future: [] });
+      setMessage("Connection lost. Your last edit may not have been saved.");
+    },
+  );
+  const canEdit = solo || (room.status === "connected" && !room.pending);
+
+  function changeMode(nextSolo: boolean) {
+    if (nextSolo === solo) return;
+    cancelGesture();
+    if (solo) soloSketch.current = historyRef.current;
+    if (nextSolo) {
+      apply(soloSketch.current ?? { present: createPattern(), past: [], future: [] });
+    } else {
+      latest.current = { revision: 0, pattern: { notes: [] } };
+      apply({ present: latest.current.pattern, past: [], future: [] });
+    }
+    setSolo(nextSolo);
+    setSelected(null);
+    setFeedback(null);
+    setMessage("");
+    setMenu(false);
+  }
+
+  const onNavigation = useEffectEvent(() => changeMode(window.location.pathname === "/solo"));
+  useEffect(() => {
+    const navigate = () => onNavigation();
+    window.addEventListener("popstate", navigate);
+    return () => window.removeEventListener("popstate", navigate);
+  }, []);
 
   useEffect(() => {
     const sequencer = new Sequencer(() => scoreRef.current);
@@ -78,7 +124,7 @@ export function App() {
     if (!active) return false;
     gesture.current = null;
     setHasPendingEdit(false);
-    apply(active.before);
+    apply(solo ? active.before : { present: latest.current.pattern, past: [], future: [] });
     setSelected(active.selected);
     setFeedback(null);
     setMessage("Gesture canceled.");
@@ -100,7 +146,9 @@ export function App() {
         gesture.current = null;
         setHasPendingEdit(false);
         const present = historyRef.current.present;
-        if (present !== active.before.present) {
+        if (!solo) {
+          commitShared(active.before.present, present);
+        } else if (present !== active.before.present) {
           apply({
             present,
             past: [...active.before.past, active.before.present].slice(-60),
@@ -114,20 +162,44 @@ export function App() {
     };
   }
 
+  function commitShared(before: Pattern, after: Pattern) {
+    const changes = changesBetween(before, after);
+    let present = latest.current.pattern;
+    if (changes.length && room.send(changes)) {
+      try {
+        present = applyChanges(present, changes);
+      } catch {
+        // Keep the local preview until the server explains a concurrent conflict.
+        present = after;
+      }
+    }
+    apply({ present, past: [], future: [] });
+  }
+
   function edit(change: (document: Pattern) => Pattern) {
+    if (!canEdit) return historyRef.current.present;
     cancelGesture();
     const previous = historyRef.current;
     const next = change(previous.present);
     if (next === previous.present) return next;
-    apply({
-      present: next,
-      past: [...previous.past, previous.present].slice(-60),
-      future: [],
-    });
+    if (solo) {
+      apply({
+        present: next,
+        past: [...previous.past, previous.present].slice(-60),
+        future: [],
+      });
+    } else commitShared(previous.present, next);
     return next;
   }
 
   function place(candidate: Note, preview = false): Placement {
+    if (!canEdit)
+      return {
+        document: historyRef.current.present,
+        note: candidate,
+        collisions: [],
+        accepted: false,
+      };
     if (!preview) cancelGesture();
     const current = historyRef.current.present;
     const result = placeNote(current, candidate);
@@ -151,6 +223,7 @@ export function App() {
   }
 
   function undo() {
+    if (!solo) return;
     if (cancelGesture()) return;
     const current = historyRef.current;
     if (!current.past.length) return;
@@ -164,6 +237,7 @@ export function App() {
   }
 
   function redo() {
+    if (!solo) return;
     cancelGesture();
     const current = historyRef.current;
     if (!current.future.length) return;
@@ -264,18 +338,18 @@ export function App() {
         <nav className="header-tools" aria-label="Sketch controls">
           <button
             className="icon-button"
-            title="Undo · ⌘/Ctrl Z"
+            title={solo ? "Undo · ⌘/Ctrl Z" : "Undo is available in Solo mode"}
             aria-label="Undo"
-            disabled={!hasPendingEdit && !history.past.length}
+            disabled={!solo || (!hasPendingEdit && !history.past.length)}
             onClick={undo}
           >
             <Icon name="undo" />
           </button>
           <button
             className="icon-button"
-            title="Redo · ⌘/Ctrl Shift Z"
+            title={solo ? "Redo · ⌘/Ctrl Shift Z" : "Redo is available in Solo mode"}
             aria-label="Redo"
-            disabled={!history.future.length}
+            disabled={!solo || !history.future.length}
             onClick={redo}
           >
             <Icon name="redo" />
@@ -301,7 +375,7 @@ export function App() {
               <div className="popover sketch-menu" id="sketch-menu">
                 <p className="menu-caption">{pattern.notes.length} lights in this loop</p>
                 <button
-                  disabled={!pattern.notes.length}
+                  disabled={!canEdit || !pattern.notes.length}
                   onClick={() => {
                     edit((previous) => ({ ...previous, notes: [] }));
                     setSelected(null);
@@ -314,8 +388,9 @@ export function App() {
                   Start with an empty space
                 </button>
                 <button
+                  disabled={!canEdit}
                   onClick={() => {
-                    edit(() => createPattern());
+                    edit(() => (solo ? createPattern() : createPattern(() => crypto.randomUUID())));
                     setSelected(null);
                     setFeedback(null);
                     setMessage("Back to the starting phrase.");
@@ -325,7 +400,11 @@ export function App() {
                 >
                   Restore the starting phrase
                 </button>
-                <p className="menu-footnote">Both can be undone. Nothing is saved.</p>
+                <p className="menu-footnote">
+                  {solo
+                    ? "Both can be undone. Nothing is saved."
+                    : "Changes affect everyone and cannot be undone."}
+                </p>
               </div>
             )}
           </div>
@@ -345,6 +424,7 @@ export function App() {
       <section className="surface" aria-label="Your musical sketch">
         <PointSpace
           document={pattern}
+          readOnly={!canEdit}
           selected={selected?.id ?? null}
           playing={playing}
           feedback={feedback}
@@ -352,7 +432,7 @@ export function App() {
           onPlace={place}
           onEdit={edit}
           onBegin={beginGesture}
-          nextId={() => nextNote.current++}
+          nextId={() => (solo ? nextNote.current++ : crypto.randomUUID())}
           getPlayback={getPlayback}
           renderSelection={(note, focusSurface) => (
             <>
@@ -366,6 +446,7 @@ export function App() {
                 className="icon-button"
                 title="Remove · Delete"
                 aria-label="Remove selected note"
+                disabled={!canEdit}
                 onClick={() => {
                   edit((previous) => ({
                     ...previous,
@@ -381,7 +462,7 @@ export function App() {
             </>
           )}
         />
-        {!pattern.notes.length && (
+        {!pattern.notes.length && canEdit && (
           <div className="empty-invitation" aria-hidden="true">
             <span className="empty-light" />
             <p>Leave the first light.</p>
@@ -390,6 +471,17 @@ export function App() {
       </section>
 
       <footer className="listening-dock">
+        <button
+          className="mode-button"
+          aria-label="Solo mode"
+          aria-pressed={solo}
+          onClick={() => {
+            window.history.pushState(null, "", solo ? "/" : "/solo");
+            changeMode(!solo);
+          }}
+        >
+          Solo mode
+        </button>
         <div className="transport">
           <button
             className="play-button"
@@ -418,12 +510,23 @@ export function App() {
         <p className={`gesture-hint${error || message ? " is-feedback" : ""}`} role="status">
           {error || message || "Tap to add. Drag to move."}
         </p>
+        <p className="mode-status" role="status">
+          {solo
+            ? "Only this tab. Not saved."
+            : room.status === "connecting"
+              ? "Connecting…"
+              : room.status === "offline"
+                ? "Reconnecting… Editing is paused."
+                : room.pending
+                  ? "Saving…"
+                  : "Everyone can edit. Changes are saved."}
+        </p>
       </footer>
       <p className="sr-only" aria-live="polite">
         {selected ? noteLabel(selected) : "No note selected."}
       </p>
 
-      <HelpDialog open={help} onClose={() => setHelp(false)} />
+      <HelpDialog open={help} onClose={() => setHelp(false)} solo={solo} />
     </main>
   );
 }

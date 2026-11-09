@@ -5,8 +5,10 @@ import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import { App } from "../../src/client/App";
 import { locate } from "../../src/client/space";
-import { TONES } from "../../src/client/pattern";
-import { DEFAULT_VOLUME, STEP_SECONDS } from "../../src/client/score";
+import { createPattern, TONES } from "../../src/shared/pattern";
+import type { Pattern } from "../../src/shared/pattern";
+import type { EditMessage, StateMessage } from "../../src/shared/room";
+import { DEFAULT_VOLUME, STEP_SECONDS } from "../../src/shared/score";
 import { deferred, TestAudioContext } from "../audio-context";
 
 const size = { width: 900, height: 600 };
@@ -21,7 +23,38 @@ let glows: Map<string, number>;
 let preference: EventTarget & { matches: boolean };
 let observers: Map<Element, (entries: { contentRect: typeof size }[]) => void>;
 
+class TestSocket {
+  static OPEN = 1;
+  static instances: TestSocket[] = [];
+  readyState = 0;
+  sent: EditMessage[] = [];
+  onmessage: ((event: MessageEvent<string>) => void) | null = null;
+  onclose: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  readonly url: URL;
+  constructor(url: URL) {
+    this.url = url;
+    TestSocket.instances.push(this);
+  }
+  send(data: string) {
+    this.sent.push(JSON.parse(data) as EditMessage);
+  }
+  close() {
+    this.readyState = 3;
+    this.onclose?.();
+  }
+  receive(state: StateMessage["state"], extra: Partial<StateMessage> = {}) {
+    this.readyState = 1;
+    this.onmessage?.(
+      new MessageEvent("message", { data: JSON.stringify({ type: "state", state, ...extra }) }),
+    );
+  }
+}
+
 beforeEach(async () => {
+  window.history.replaceState(null, "", "/solo");
+  TestSocket.instances = [];
+  vi.stubGlobal("WebSocket", TestSocket);
   size.width = 900;
   vi.useFakeTimers();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -1284,4 +1317,160 @@ test("resizing a paused surface redraws the canvas and relocates hit targets wit
   expect(element<HTMLCanvasElement>("canvas").width).toBe(1100);
   expect(draws.mock.calls.length).toBeGreaterThan(before);
   expect(frames.size).toBe(0);
+});
+
+function connectRoom(pattern: Pattern = { notes: [] }) {
+  click(button("Solo mode"));
+  const socket = TestSocket.instances.at(-1)!;
+  act(() => socket.receive({ revision: 0, pattern }));
+  return socket;
+}
+
+test("Solo is network-free and its sketch and history survive mode switches and URL navigation", () => {
+  expect(TestSocket.instances).toHaveLength(0);
+  pointer("pointerdown", 3, 7);
+  pointer("pointerup", 3, 7);
+  const soloNotes = notes();
+  expect(button("Undo").disabled).toBe(false);
+  const socket = connectRoom();
+  expect(window.location.pathname).toBe("/");
+  expect(notes()).toHaveLength(0);
+  expect(button("Undo").disabled).toBe(true);
+  expect(socket.sent).toHaveLength(0);
+  click(button("Solo mode"));
+  expect(window.location.pathname).toBe("/solo");
+  expect(notes()).toEqual(soloNotes);
+  expect(button("Undo").disabled).toBe(false);
+  expect(socket.readyState).toBe(3);
+  act(() => {
+    window.history.replaceState(null, "", "/");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  expect(button("Solo mode").getAttribute("aria-pressed")).toBe("false");
+  expect(TestSocket.instances).toHaveLength(2);
+});
+
+test("the default URL connects to the room instead of starting a local sketch", async () => {
+  await act(async () => root.render(null));
+  window.history.replaceState(null, "", "/");
+  await act(async () => root.render(createElement(StrictMode, null, createElement(App))));
+  const socket = TestSocket.instances.at(-1)!;
+  expect(socket.url.pathname).toBe("/api/room");
+  expect(notes()).toHaveLength(0);
+  expect(surface().getAttribute("aria-disabled")).toBe("true");
+  add(3, 7);
+  expect(socket.sent).toHaveLength(0);
+  expect(notes()).toHaveLength(0);
+  const pattern = createPattern(() => crypto.randomUUID());
+  act(() => socket.receive({ revision: 4, pattern }));
+  expect(notes()).toHaveLength(20);
+  expect(surface().getAttribute("aria-disabled")).toBe("false");
+});
+
+test("shared gestures send one committed batch with UUIDs, wait for acknowledgement, and roll back rejection", () => {
+  const socket = connectRoom();
+  pointer("pointerdown", 3, 7, surface(), { shiftKey: true });
+  pointer("pointermove", 5, 9);
+  expect(socket.sent).toHaveLength(0);
+  pointer("pointerup", 5, 9);
+  expect(socket.sent).toHaveLength(1);
+  const request = socket.sent[0];
+  expect(request.changes).toHaveLength(2);
+  expect(
+    request.changes.every((change) => change.type === "add" && typeof change.note.id === "string"),
+  ).toBe(true);
+  expect(notes()).toHaveLength(2);
+  expect(surface().getAttribute("aria-disabled")).toBe("true");
+  pointer("pointerdown", 7, 10);
+  pointer("pointerup", 7, 10);
+  expect(socket.sent).toHaveLength(1);
+  act(() =>
+    socket.receive(
+      { revision: 0, pattern: { notes: [] } },
+      { requestId: request.requestId, error: "That sound is already here." },
+    ),
+  );
+  expect(notes()).toHaveLength(0);
+  expect(surface().getAttribute("aria-disabled")).toBe("false");
+  expect(element(".gesture-hint").textContent).toContain("already here");
+});
+
+test("a remote edit during a gesture is preserved without becoming part of the local command", () => {
+  const socket = connectRoom();
+  pointer("pointerdown", 3, 7);
+  const remote = { id: crypto.randomUUID(), step: 5, tone: 10 };
+  act(() => socket.receive({ revision: 1, pattern: { notes: [remote] } }));
+  pointer("pointerup", 3, 7);
+  expect(socket.sent).toHaveLength(1);
+  expect(socket.sent[0].changes).toHaveLength(1);
+  expect(socket.sent[0].changes[0]).toMatchObject({ type: "add", note: { step: 3, tone: 7 } });
+  expect(notes()).toHaveLength(2);
+  const change = socket.sent[0].changes[0];
+  if (change.type !== "add") throw new Error("Expected an added light");
+  act(() =>
+    socket.receive(
+      { revision: 2, pattern: { notes: [remote, change.note] } },
+      { requestId: socket.sent[0].requestId },
+    ),
+  );
+  expect(notes()).toHaveLength(2);
+  expect(surface().getAttribute("aria-disabled")).toBe("false");
+});
+
+test("disconnect cancels unfinished gestures and reconnects without replaying edits", () => {
+  const socket = connectRoom();
+  pointer("pointerdown", 3, 7, surface(), { shiftKey: true });
+  expect(notes()).toHaveLength(1);
+  act(() => socket.close());
+  expect(notes()).toHaveLength(0);
+  pointer("pointerup", 3, 7);
+  expect(socket.sent).toHaveLength(0);
+  expect(surface().getAttribute("aria-disabled")).toBe("true");
+  frame(500);
+  const reconnected = TestSocket.instances.at(-1)!;
+  expect(reconnected).not.toBe(socket);
+  const saved = { id: crypto.randomUUID(), step: 3, tone: 7 };
+  act(() => reconnected.receive({ revision: 1, pattern: { notes: [saved] } }));
+  expect(notes()).toHaveLength(1);
+  expect(reconnected.sent).toHaveLength(0);
+  expect(surface().getAttribute("aria-disabled")).toBe("false");
+});
+
+test("shared keyboard moves and removal send targeted changes, not pattern replacements", () => {
+  const note = { id: crypto.randomUUID(), step: 3, tone: 7 };
+  const socket = connectRoom({ notes: [note] });
+  act(() => element(`[data-light="${note.id}"]`).focus());
+  key("ArrowRight");
+  expect(socket.sent[0].changes).toEqual([{ type: "move", note: { ...note, step: 4 } }]);
+  act(() =>
+    socket.receive(
+      { revision: 1, pattern: { notes: [{ ...note, step: 4 }] } },
+      { requestId: socket.sent[0].requestId },
+    ),
+  );
+  key("Delete");
+  expect(socket.sent[1].changes).toEqual([{ type: "remove", id: note.id }]);
+  act(() =>
+    socket.receive(
+      { revision: 2, pattern: { notes: [] } },
+      { requestId: socket.sent[1].requestId },
+    ),
+  );
+  expect(notes()).toHaveLength(0);
+});
+
+test("an acknowledgement timeout reconnects and loads saved state instead of retrying the edit", () => {
+  const socket = connectRoom();
+  add(3, 7);
+  const change = socket.sent[0].changes[0];
+  if (change.type !== "add") throw new Error("Expected an added light");
+  frame(10_000);
+  expect(socket.readyState).toBe(3);
+  expect(surface().getAttribute("aria-disabled")).toBe("true");
+  frame(500);
+  const reconnected = TestSocket.instances.at(-1)!;
+  act(() => reconnected.receive({ revision: 1, pattern: { notes: [change.note] } }));
+  expect(notes()).toHaveLength(1);
+  expect(reconnected.sent).toHaveLength(0);
+  expect(surface().getAttribute("aria-disabled")).toBe("false");
 });

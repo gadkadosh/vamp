@@ -1,7 +1,7 @@
-import { STEP_COUNT } from "./score";
-import type { Playback } from "./score";
-import { snapNote, soundingStep, toneFor } from "./pattern";
-import type { Collision, CollisionFeedback, Pattern, Note } from "./pattern";
+import { STEP_COUNT } from "../shared/score";
+import type { Playback } from "../shared/score";
+import { snapNote, soundingStep, toneFor } from "../shared/pattern";
+import type { Collision, CollisionFeedback, Pattern, Note, NoteId } from "../shared/pattern";
 import { fieldBounds, locate, TAU } from "./space";
 import type { LightProjection, Position, Size } from "./space";
 
@@ -9,7 +9,7 @@ export const FEEDBACK_MS = 800;
 export type LandingPreview = { note: Note; collisions: Collision[] };
 export type Scene = {
   document: Pattern;
-  selected: number | null;
+  selected: NoteId | null;
   playing: boolean;
   reducedMotion: boolean;
   preview: LandingPreview | null;

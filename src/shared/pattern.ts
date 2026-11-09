@@ -1,5 +1,6 @@
 import { INSTRUMENTS, INSTRUMENT_IDS, pitchIndex, STEP_COUNT } from "./score";
-import type { InstrumentId, TimedNote } from "./score";
+import type { InstrumentId, NoteId, TimedNote } from "./score";
+export type { NoteId } from "./score";
 
 // Instrument order, exposed pitches, and colors on the ascending interface axis.
 export const INSTRUMENT_LAYOUT = [
@@ -38,9 +39,9 @@ export const TONES = INSTRUMENT_LAYOUT.flatMap((entry) => {
   });
 });
 // Drafts move continuously; committed lights land on rhythmic and pitched positions.
-export type Note = { id: number; step: number; tone: number };
+export type Note = { id: NoteId; step: number; tone: number };
 export type Pattern = { notes: Note[] };
-export type Collision = { noteId: number; step: number };
+export type Collision = { noteId: NoteId; step: number };
 export type CollisionFeedback = { collisions: Collision[]; started: number };
 export type Placement = {
   document: Pattern;
@@ -58,7 +59,7 @@ export const snapNote = (note: Note): Note => ({
   tone: clamp(Math.round(note.tone), 0, TONES.length - 1),
 });
 
-export function createPattern(): Pattern {
+export function createPattern(idFor: (index: number) => NoteId = (index) => index): Pattern {
   let id = 0;
   const notes: Note[] = [];
   for (const instrumentId of INSTRUMENT_IDS) {
@@ -72,7 +73,7 @@ export function createPattern(): Pattern {
       const closest = candidates.reduce((a, b) =>
         Math.abs(a.note.frequency - frequency) <= Math.abs(b.note.frequency - frequency) ? a : b,
       );
-      notes.push({ id: ++id, step, tone: closest.index });
+      notes.push({ id: idFor(++id), step, tone: closest.index });
     }
   }
   return { notes };
@@ -127,5 +128,5 @@ export function moveNote(note: Note, stepDelta: number, toneDelta: number): Note
 
 export function noteLabel(note: Note): string {
   const instrument = INSTRUMENTS[toneFor(note).instrument];
-  return `Note ${note.id}: ${instrument.name}, ${toneFor(note).note.name}, beat position ${soundingStep(note.step) + 1} of ${STEP_COUNT}`;
+  return `${instrument.name}, ${toneFor(note).note.name}, beat position ${soundingStep(note.step) + 1} of ${STEP_COUNT}`;
 }

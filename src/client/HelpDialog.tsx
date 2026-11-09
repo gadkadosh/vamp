@@ -1,8 +1,16 @@
 import { useEffect, useRef } from "react";
 import { Icon } from "./Icon";
-import { INSTRUMENT_LAYOUT } from "./pattern";
+import { INSTRUMENT_LAYOUT } from "../shared/pattern";
 
-export function HelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function HelpDialog({
+  open,
+  onClose,
+  solo,
+}: {
+  open: boolean;
+  onClose: () => void;
+  solo: boolean;
+}) {
   const dialog = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -61,27 +69,29 @@ export function HelpDialog({ open, onClose }: { open: boolean; onClose: () => vo
           <dt>Make a mark</dt>
           <dd>
             Tap the space to add a light. Drag one to change when it plays and how high it sounds.
-            Release and it finds its place. Shift-drag to scatter a trail. Escape or Undo cancels an
+            Release and it finds its place. Shift-drag to scatter a trail. Escape cancels an
             unfinished gesture.
           </dd>
         </div>
         <div>
           <dt>Let it ring</dt>
           <dd>
-            Press Play. The lights bloom as their sounds unfold. Nothing changes unless you change
-            it. Higher notes change from bass through mallet and muted piano to glass.
+            Press Play. The lights bloom as their sounds unfold. Playback and sound controls are
+            just for you. Higher notes change from bass through mallet and muted piano to glass.
           </dd>
         </div>
         <div>
           <dt>Keep or take away</dt>
           <dd>
-            Select a light to remove it. Tap it again to deselect. Undo brings it back. Occupied
-            bass beats and identical sounds flash instead of adding a duplicate.
+            Select a light to remove it. Tap it again to deselect. Undo is available in Solo mode.
+            Occupied bass beats and identical sounds flash instead of adding a duplicate.
           </dd>
         </div>
       </dl>
       <p className="guide-footnote">
-        Just this tab. Nothing is saved.
+        {solo
+          ? "Just this tab. Nothing is saved."
+          : "Everyone edits this composition. Changes are saved."}
         <br />
         Tab into the space. Page Up / Down select a light; arrows move it.
         <br />
