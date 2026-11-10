@@ -1,8 +1,16 @@
 import { useEffect, useRef } from "react";
 import { Icon } from "./Icon";
-import { INSTRUMENT_LAYOUT } from "./pattern";
+import { INSTRUMENT_LAYOUT } from "../shared/pattern";
 
-export function HelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function HelpDialog({
+  open,
+  onClose,
+  solo,
+}: {
+  open: boolean;
+  onClose: () => void;
+  solo: boolean;
+}) {
   const dialog = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -61,8 +69,8 @@ export function HelpDialog({ open, onClose }: { open: boolean; onClose: () => vo
           <dt>Make a mark</dt>
           <dd>
             Tap the space to add a light. Drag one to change when it plays and how high it sounds.
-            Release and it finds its place. Shift-drag to scatter a trail. Escape or Undo cancels an
-            unfinished gesture.
+            Release and it finds its place. Shift-drag to scatter a trail. Escape
+            {solo ? " or Undo" : ""} cancels an unfinished gesture.
           </dd>
         </div>
         <div>
@@ -75,13 +83,16 @@ export function HelpDialog({ open, onClose }: { open: boolean; onClose: () => vo
         <div>
           <dt>Keep or take away</dt>
           <dd>
-            Select a light to remove it. Tap it again to deselect. Undo brings it back. Occupied
-            bass beats and identical sounds flash instead of adding a duplicate.
+            Select a light to remove it. Tap it again to deselect.
+            {solo ? " Undo brings it back." : " Everyone can move or remove notes for now."}{" "}
+            Occupied bass beats and identical sounds flash instead of adding a duplicate.
           </dd>
         </div>
       </dl>
       <p className="guide-footnote">
-        Just this tab. Nothing is saved.
+        {solo
+          ? "Just this tab. Nothing is saved."
+          : "Changes are saved to the shared pattern. Reload to get others’ changes."}
         <br />
         Tab into the space. Page Up / Down select a light; arrows move it.
         <br />

@@ -7,8 +7,8 @@ import {
   STEP_SECONDS,
 } from "../src/client/score";
 import type { InstrumentId, TimedNote } from "../src/client/score";
-import { compose, TONES } from "../src/client/pattern";
-import type { Pattern } from "../src/client/pattern";
+import { compose, TONES } from "../src/shared/pattern";
+import type { Pattern } from "../src/shared/pattern";
 import { Sequencer } from "../src/client/sequencer";
 import { carriers, channel, deferred, plucks, routesTo, TestAudioContext } from "./audio-context";
 

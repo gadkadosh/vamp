@@ -1,18 +1,29 @@
-import type { Note, Pattern } from "./pattern";
+import type { Note, NoteId, Pattern } from "../shared/pattern";
 
-export type PatternEdit =
-  | { type: "place"; notes: Note[] }
-  | { type: "remove"; id: number }
-  | { type: "clear" }
-  | { type: "restore" };
+export type PatternEdit = { type: "place"; notes: Note[] } | { type: "remove"; id: NoteId };
 
-// Committed state and editing operations, independent of the instrument's local previews.
-export type EditingSession = {
+type Session = {
   pattern: Pattern;
+  edit: (edit: PatternEdit) => void;
+};
+
+export type SoloSession = Session & {
+  kind: "solo";
   canUndo: boolean;
   canRedo: boolean;
-  edit: (edit: PatternEdit) => void;
   undo: () => boolean;
   redo: () => boolean;
+  clear: () => void;
+  restore: () => void;
   nextId: () => number;
 };
+
+export type SharedSession = Session & {
+  kind: "shared";
+  status: "loading" | "ready" | "saving" | "unavailable";
+  error: string;
+  reload: () => void;
+  nextId: () => string;
+};
+
+export type EditingSession = SoloSession | SharedSession;

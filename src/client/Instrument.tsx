@@ -2,18 +2,34 @@ import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } fro
 import { HelpDialog } from "./HelpDialog";
 import { Icon } from "./Icon";
 import { PointSpace } from "./PointSpace";
-import { compose, placeNote, noteLabel, toneFor } from "./pattern";
+import { compose, placeNote, noteLabel, toneFor } from "../shared/pattern";
 import type { EditingSession, PatternEdit } from "./editing";
-import type { CollisionFeedback, Pattern, Placement, Note } from "./pattern";
+import type { CollisionFeedback, Pattern, Placement, Note, NoteId } from "../shared/pattern";
 import { Sequencer } from "./sequencer";
 import { DEFAULT_VOLUME, EMPTY_PLAYBACK, INSTRUMENTS } from "./score";
 
-export function Instrument({ session }: { session: EditingSession }) {
+export function Instrument({
+  session,
+  onSwitchMode,
+}: {
+  session: EditingSession;
+  onSwitchMode?: () => void;
+}) {
+  const solo = session.kind === "solo" ? session : null;
+  const shared = session.kind === "shared" ? session : null;
+  const canEdit = !shared || shared.status === "ready";
+  const sessionMessage =
+    shared?.error ||
+    (shared?.status === "loading"
+      ? "Loading the shared pattern…"
+      : shared?.status === "saving"
+        ? "Saving the shared pattern…"
+        : "");
   const [preview, setPreview] = useState<Pattern | null>(null);
   const gesture = useRef<{
     document: Pattern;
     notes: Note[];
-    selected: number | null;
+    selected: NoteId | null;
     cancel: () => void;
   } | null>(null);
   const [hasPendingEdit, setHasPendingEdit] = useState(false);
@@ -22,7 +38,7 @@ export function Instrument({ session }: { session: EditingSession }) {
   const scoreRef = useRef(score);
   const sequencerRef = useRef<Sequencer | null>(null);
   const getPlayback = useCallback(() => sequencerRef.current?.getPlayback() ?? EMPTY_PLAYBACK, []);
-  const [selectedId, setSelected] = useState<number | null>(null);
+  const [selectedId, setSelected] = useState<NoteId | null>(null);
   const selected = pattern.notes.find((note) => note.id === selectedId);
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -101,6 +117,7 @@ export function Instrument({ session }: { session: EditingSession }) {
   }
 
   function edit(action: PatternEdit) {
+    if (!canEdit) return;
     cancelGesture();
     session.edit(action);
   }
@@ -136,14 +153,14 @@ export function Instrument({ session }: { session: EditingSession }) {
 
   function undo() {
     if (cancelGesture()) return;
-    if (!session.undo()) return;
+    if (!solo?.undo()) return;
     setFeedback(null);
     setMessage("One gesture back.");
   }
 
   function redo() {
     cancelGesture();
-    if (!session.redo()) return;
+    if (!solo?.redo()) return;
     setFeedback(null);
     setMessage("One gesture forward.");
   }
@@ -195,8 +212,9 @@ export function Instrument({ session }: { session: EditingSession }) {
       return;
     }
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+      if (!solo && !gesture.current) return;
       event.preventDefault();
-      if (event.shiftKey) redo();
+      if (event.shiftKey && solo) redo();
       else undo();
       return;
     }
@@ -228,30 +246,34 @@ export function Instrument({ session }: { session: EditingSession }) {
   }, []);
 
   return (
-    <main className="instrument" aria-label="Vamp musical instrument">
+    <main className="instrument" aria-label="Vamp musical instrument" data-mode={session.kind}>
       <header className="masthead">
         <h1 className="wordmark" aria-label="Vamp">
           vamp<span aria-hidden="true">·</span>
         </h1>
         <nav className="header-tools" aria-label="Sketch controls">
-          <button
-            className="icon-button"
-            title="Undo · ⌘/Ctrl Z"
-            aria-label="Undo"
-            disabled={!hasPendingEdit && !session.canUndo}
-            onClick={undo}
-          >
-            <Icon name="undo" />
-          </button>
-          <button
-            className="icon-button"
-            title="Redo · ⌘/Ctrl Shift Z"
-            aria-label="Redo"
-            disabled={!session.canRedo}
-            onClick={redo}
-          >
-            <Icon name="redo" />
-          </button>
+          {solo && (
+            <>
+              <button
+                className="icon-button"
+                title="Undo · ⌘/Ctrl Z"
+                aria-label="Undo"
+                disabled={!hasPendingEdit && !solo.canUndo}
+                onClick={undo}
+              >
+                <Icon name="undo" />
+              </button>
+              <button
+                className="icon-button"
+                title="Redo · ⌘/Ctrl Shift Z"
+                aria-label="Redo"
+                disabled={!solo.canRedo}
+                onClick={redo}
+              >
+                <Icon name="redo" />
+              </button>
+            </>
+          )}
           <div
             className="menu-anchor"
             ref={menuAnchor}
@@ -272,32 +294,56 @@ export function Instrument({ session }: { session: EditingSession }) {
             {menu && (
               <div className="popover sketch-menu" id="sketch-menu">
                 <p className="menu-caption">{pattern.notes.length} lights in this loop</p>
-                <button
-                  disabled={!pattern.notes.length}
-                  onClick={() => {
-                    edit({ type: "clear" });
-                    setSelected(null);
-                    setFeedback(null);
-                    setMessage("An empty space. Tap anywhere to begin.");
-                    setMenu(false);
-                    menuTrigger.current?.focus();
-                  }}
-                >
-                  Start with an empty space
-                </button>
-                <button
-                  onClick={() => {
-                    edit({ type: "restore" });
-                    setSelected(null);
-                    setFeedback(null);
-                    setMessage("Back to the starting phrase.");
-                    setMenu(false);
-                    menuTrigger.current?.focus();
-                  }}
-                >
-                  Restore the starting phrase
-                </button>
-                <p className="menu-footnote">Both can be undone. Nothing is saved.</p>
+                {solo && (
+                  <>
+                    <button
+                      disabled={!pattern.notes.length}
+                      onClick={() => {
+                        cancelGesture();
+                        solo.clear();
+                        setSelected(null);
+                        setFeedback(null);
+                        setMessage("An empty space. Tap anywhere to begin.");
+                        setMenu(false);
+                        menuTrigger.current?.focus();
+                      }}
+                    >
+                      Start with an empty space
+                    </button>
+                    <button
+                      onClick={() => {
+                        cancelGesture();
+                        solo.restore();
+                        setSelected(null);
+                        setFeedback(null);
+                        setMessage("Back to the starting phrase.");
+                        setMenu(false);
+                        menuTrigger.current?.focus();
+                      }}
+                    >
+                      Restore the starting phrase
+                    </button>
+                    <p className="menu-footnote">Both can be undone. Nothing is saved.</p>
+                  </>
+                )}
+                {shared && (
+                  <>
+                    <button
+                      disabled={shared.status === "saving" || shared.status === "loading"}
+                      onClick={() => {
+                        cancelGesture();
+                        shared.reload();
+                        setMenu(false);
+                        menuTrigger.current?.focus();
+                      }}
+                    >
+                      Reload shared pattern
+                    </button>
+                    <p className="menu-footnote">
+                      Everyone can edit. Changes are saved; reload to get others’ changes.
+                    </p>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -314,9 +360,15 @@ export function Instrument({ session }: { session: EditingSession }) {
         </nav>
       </header>
 
-      <section className="surface" aria-label="Your musical sketch">
+      <section
+        className="surface"
+        aria-label={solo ? "Your musical sketch" : "Shared musical pattern"}
+        aria-busy={shared?.status === "loading" || shared?.status === "saving"}
+      >
         <PointSpace
           document={pattern}
+          disabled={!canEdit}
+          undoable={!!solo}
           selected={selected?.id ?? null}
           playing={playing}
           feedback={feedback}
@@ -338,6 +390,7 @@ export function Instrument({ session }: { session: EditingSession }) {
                 className="icon-button"
                 title="Remove · Delete"
                 aria-label="Remove selected note"
+                disabled={!canEdit}
                 onClick={() => {
                   edit({ type: "remove", id: note.id });
                   setSelected(null);
@@ -350,15 +403,39 @@ export function Instrument({ session }: { session: EditingSession }) {
             </>
           )}
         />
-        {!pattern.notes.length && (
+        {!pattern.notes.length && canEdit && (
           <div className="empty-invitation" aria-hidden="true">
             <span className="empty-light" />
             <p>Leave the first light.</p>
           </div>
         )}
+        {!pattern.notes.length && shared && !canEdit && (
+          <div className="empty-invitation connection-notice">
+            <p>
+              {shared.status === "loading"
+                ? "Loading shared pattern…"
+                : "Shared pattern unavailable."}
+            </p>
+            {shared.status === "unavailable" && (
+              <button className="connection-retry" onClick={shared.reload}>
+                Reload shared pattern
+              </button>
+            )}
+          </div>
+        )}
       </section>
 
       <footer className="listening-dock">
+        {onSwitchMode && (
+          <button
+            className="mode-control"
+            aria-label={solo ? "Switch to shared mode" : "Switch to solo mode"}
+            disabled={shared?.status === "saving"}
+            onClick={onSwitchMode}
+          >
+            {solo ? "Back to shared" : "Play solo"}
+          </button>
+        )}
         <div className="transport">
           <button
             className="play-button"
@@ -384,15 +461,23 @@ export function Instrument({ session }: { session: EditingSession }) {
           <Icon name={muted ? "mute" : "sound"} />
           <span>{muted ? "Sound off" : "Sound on"}</span>
         </button>
-        <p className={`gesture-hint${error || message ? " is-feedback" : ""}`} role="status">
-          {error || message || "Tap to add. Drag to move."}
+        <p
+          className={`gesture-hint${sessionMessage || error || message ? " is-feedback" : ""}`}
+          role="status"
+        >
+          {sessionMessage ||
+            error ||
+            message ||
+            (solo
+              ? "Tap to add. Drag to move."
+              : "Shared and saved. Reload to get others’ changes.")}
         </p>
       </footer>
       <p className="sr-only" aria-live="polite">
         {selected ? noteLabel(selected) : "No note selected."}
       </p>
 
-      <HelpDialog open={help} onClose={() => setHelp(false)} />
+      <HelpDialog open={help} onClose={() => setHelp(false)} solo={!!solo} />
     </main>
   );
 }

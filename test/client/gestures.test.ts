@@ -5,10 +5,12 @@ import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import { App } from "../../src/client/App";
 import { Instrument } from "../../src/client/Instrument";
-import type { EditingSession } from "../../src/client/editing";
+import type { SoloSession } from "../../src/client/editing";
 import { useSoloSession } from "../../src/client/useSoloSession";
 import { locate } from "../../src/client/space";
-import { TONES } from "../../src/client/pattern";
+import { createPattern, TONES } from "../../src/shared/pattern";
+import { COMPOSITION_ID } from "../../src/shared/composition";
+import type { Composition, CompositionEdit } from "../../src/shared/composition";
 import { DEFAULT_VOLUME, STEP_SECONDS } from "../../src/client/score";
 import { deferred, TestAudioContext } from "../audio-context";
 
@@ -23,6 +25,11 @@ let draws: ReturnType<typeof vi.fn<() => void>>;
 let glows: Map<string, number>;
 let preference: EventTarget & { matches: boolean };
 let observers: Map<Element, (entries: { contentRect: typeof size }[]) => void>;
+
+function SoloInstrument() {
+  const session = useSoloSession();
+  return createElement(Instrument, { session });
+}
 
 beforeEach(async () => {
   size.width = 900;
@@ -56,7 +63,7 @@ beforeEach(async () => {
       }
     },
   );
-  // Only browser geometry and drawing are fake; App, PointSpace, and history run together.
+  // Only browser geometry and drawing are fake; the solo instrument and history run together.
   let nextFrame = 0;
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
     frames.set(++nextFrame, callback);
@@ -98,7 +105,9 @@ beforeEach(async () => {
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
-  await act(async () => root.render(createElement(StrictMode, null, createElement(App))));
+  await act(async () =>
+    root.render(createElement(StrictMode, null, createElement(SoloInstrument))),
+  );
 });
 
 afterEach(async () => {
@@ -213,8 +222,194 @@ function expectFinished() {
   expect(surface().hasPointerCapture(1)).toBe(false);
 }
 
+function sharedComposition(): Composition {
+  return {
+    id: COMPOSITION_ID,
+    revision: 0,
+    pattern: { notes: createPattern().notes.map((note) => ({ ...note, id: `seed-${note.id}` })) },
+  };
+}
+
+async function mountApp(implementation: typeof fetch) {
+  const transport = vi.fn(implementation);
+  vi.stubGlobal("fetch", transport);
+  await act(async () => root.render(createElement(StrictMode, null, createElement(App))));
+  return transport;
+}
+
+test("shared is the default, keeps pending notes visible, and locks editing until saved", async () => {
+  const initial = sharedComposition();
+  let saved = initial;
+  const pending = deferred();
+  const transport = await mountApp(async (_url, options) => {
+    if (options?.method === "POST") {
+      await pending.promise;
+      return Response.json({ composition: saved });
+    }
+    return Response.json(initial);
+  });
+  expect(element("main").dataset.mode).toBe("shared");
+  expect(notes()).toHaveLength(20);
+  expect(document.querySelector('[aria-label="Undo"]')).toBeNull();
+  click(button("Sketch options"));
+  expect(element(".sketch-menu").textContent).not.toContain("empty space");
+  expect(element(".sketch-menu").textContent).not.toContain("Restore");
+  click(button("Sketch options"));
+  add(2, 9);
+  expect(notes()).toHaveLength(21);
+  expect(element('[role="status"]').textContent).toContain("Saving");
+  expect(surface().getAttribute("aria-disabled")).toBe("true");
+  expect(button("Switch to solo mode").disabled).toBe(true);
+  const body = transport.mock.calls.at(-1)![1]?.body;
+  if (typeof body !== "string") throw new Error("Expected a JSON request body");
+  const posted = JSON.parse(body) as CompositionEdit;
+  expect(posted.compositionId).toBe(COMPOSITION_ID);
+  const change = posted.changes[0];
+  expect(change.type).toBe("add");
+  if (change.type !== "add") throw new Error("Expected an addition");
+  expect(change.note.id).toMatch(/^[0-9a-f-]{36}$/);
+  expect(element(`[data-light="${change.note.id}"]`).getAttribute("aria-label")).not.toContain(
+    change.note.id,
+  );
+  saved = { ...initial, revision: 1, pattern: { notes: [...initial.pattern.notes, change.note] } };
+  const count = transport.mock.calls.length;
+  add(3, 9);
+  key("Delete");
+  expect(transport).toHaveBeenCalledTimes(count);
+  expect(notes()).toHaveLength(21);
+  await act(async () => pending.resolve());
+  expect(notes()).toHaveLength(21);
+  expect(surface().getAttribute("aria-disabled")).toBe("false");
+  expect(button("Switch to solo mode").disabled).toBe(false);
+});
+
+test("mode switching retains the solo sketch and history without publishing it", async () => {
+  const initial = sharedComposition();
+  const transport = await mountApp(async () => Response.json(initial));
+  click(button("Switch to solo mode"));
+  expect(element("main").dataset.mode).toBe("solo");
+  add(2, 9);
+  const sketch = notes();
+  expect(sketch).toHaveLength(21);
+  expect(button("Undo").disabled).toBe(false);
+  await act(async () => button("Switch to shared mode").click());
+  expect(element("main").dataset.mode).toBe("shared");
+  expect(notes()).toHaveLength(20);
+  click(button("Switch to solo mode"));
+  expect(notes()).toEqual(sketch);
+  expect(button("Undo").disabled).toBe(false);
+  click(button("Undo"));
+  expect(notes()).toHaveLength(20);
+  expect(transport.mock.calls.every(([, options]) => options?.method !== "POST")).toBe(true);
+});
+
+test("shared load failure does not enable editing or hide access to solo", async () => {
+  await mountApp(async () => Response.json({ error: "Unavailable" }, { status: 503 }));
+  expect(notes()).toEqual([]);
+  expect(surface().getAttribute("aria-disabled")).toBe("true");
+  expect(element('[role="status"]').textContent).toContain("Couldn’t load");
+  add(2, 9);
+  expect(notes()).toEqual([]);
+  expect(element(".connection-retry").textContent).toBe("Reload shared pattern");
+  click(button("Switch to solo mode"));
+  expect(notes()).toHaveLength(20);
+  add(2, 9);
+  expect(notes()).toHaveLength(21);
+});
+
+test("a shared rejection removes the pending note and shows the server's current pattern", async () => {
+  const initial = sharedComposition();
+  const occupied = { id: "another-browser", step: 2, tone: 9 };
+  const authoritative = {
+    ...initial,
+    revision: 1,
+    pattern: { notes: [...initial.pattern.notes, occupied] },
+  };
+  const pending = deferred();
+  await mountApp(async (_url, options) => {
+    if (options?.method === "POST") {
+      await pending.promise;
+      return Response.json(
+        { composition: authoritative, error: "That sound is already here." },
+        { status: 409 },
+      );
+    }
+    return Response.json(initial);
+  });
+  add(2, 9);
+  expect(notes()).toHaveLength(21);
+  expect(document.querySelector('[data-light="another-browser"]')).toBeNull();
+  await act(async () => pending.resolve());
+  expect(notes()).toHaveLength(21);
+  expect(element('[data-light="another-browser"]').getAttribute("aria-label")).toContain(
+    "beat position 3 of 32",
+  );
+  expect(element('[role="status"]').textContent).toContain("already here");
+  expect(surface().getAttribute("aria-disabled")).toBe("false");
+});
+
+test("an unconfirmed save blocks edits until reload reconciles with the server, without replaying it", async () => {
+  const initial = sharedComposition();
+  let saved = initial;
+  const pending = deferred();
+  const transport = await mountApp(async (_url, options) => {
+    if (options?.method === "POST") {
+      if (typeof options.body !== "string") throw new Error("Expected a JSON request body");
+      const posted = JSON.parse(options.body) as CompositionEdit;
+      const change = posted.changes[0];
+      if (change.type !== "add") throw new Error("Expected an addition");
+      saved = {
+        ...initial,
+        revision: 1,
+        pattern: { notes: [...initial.pattern.notes, change.note] },
+      };
+      await pending.promise;
+      throw new Error("Response lost after saving");
+    }
+    return Response.json(saved);
+  });
+  add(2, 9);
+  expect(notes()).toHaveLength(21);
+  await act(async () => pending.resolve());
+  expect(notes()).toHaveLength(20);
+  expect(surface().getAttribute("aria-disabled")).toBe("true");
+  expect(element('[role="status"]').textContent).toContain("may be saved");
+  click(button("Sketch options"));
+  await act(async () => element(".sketch-menu button").click());
+  expect(notes()).toHaveLength(21);
+  expect(surface().getAttribute("aria-disabled")).toBe("false");
+  expect(transport.mock.calls.filter(([, options]) => options?.method === "POST")).toHaveLength(1);
+});
+
+test("reloading the shared pattern discards an unfinished trail without publishing it", async () => {
+  const initial = sharedComposition();
+  const transport = await mountApp(async () => Response.json(initial));
+  paint();
+  expect(notes()).toHaveLength(22);
+  click(button("Sketch options"));
+  await act(async () => element(".sketch-menu button").click());
+  expectFinished();
+  expect(notes()).toHaveLength(20);
+  pointer("pointerup", 8, 10);
+  expect(notes()).toHaveLength(20);
+  expect(transport.mock.calls.every(([, options]) => options?.method !== "POST")).toBe(true);
+});
+
+test("switching mode stops playback without publishing any notes", async () => {
+  const initial = sharedComposition();
+  const transport = await mountApp(async () => Response.json(initial));
+  await act(async () => button("Play loop").click());
+  const context = TestAudioContext.instances[0];
+  expect(context.state).toBe("running");
+  click(button("Switch to solo mode"));
+  expect(context.state).toBe("closed");
+  expect(button("Play loop").getAttribute("aria-pressed")).toBe("false");
+  expect(frames.size).toBe(0);
+  expect(transport.mock.calls.every(([, options]) => options?.method !== "POST")).toBe(true);
+});
+
 async function observeSession() {
-  let session: EditingSession;
+  let session: SoloSession;
   function Solo() {
     session = useSoloSession();
     return createElement(Instrument, { session });
@@ -919,7 +1114,9 @@ test("an unchanged paused surface schedules no animation frames or repeated redr
 test("an unavailable canvas context does not break editing or playback controls", async () => {
   await act(async () => root.render(null));
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
-  await act(async () => root.render(createElement(StrictMode, null, createElement(App))));
+  await act(async () =>
+    root.render(createElement(StrictMode, null, createElement(SoloInstrument))),
+  );
   expect(notes()).toHaveLength(20);
   act(() => surface().focus());
   key("Enter");

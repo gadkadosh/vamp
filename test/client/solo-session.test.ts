@@ -3,12 +3,12 @@ import { act, createElement, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
-import type { EditingSession } from "../../src/client/editing";
-import { createPattern } from "../../src/client/pattern";
+import type { SoloSession } from "../../src/client/editing";
+import { createPattern } from "../../src/shared/pattern";
 import { useSoloSession } from "../../src/client/useSoloSession";
 
 let root: Root;
-let session: EditingSession;
+let session: SoloSession;
 
 function Solo() {
   session = useSoloSession();
@@ -75,9 +75,9 @@ test("remove, clear, and restore are explicit undoable edits", () => {
   act(() => session.edit({ type: "remove", id: seed.notes[0].id }));
   const removed = session.pattern;
   expect(removed.notes).toEqual(seed.notes.slice(1));
-  act(() => session.edit({ type: "clear" }));
+  act(() => session.clear());
   expect(session.pattern.notes).toEqual([]);
-  act(() => session.edit({ type: "restore" }));
+  act(() => session.restore());
   expect(session.pattern).toEqual(createPattern());
   act(() => expect(session.undo()).toBe(true));
   expect(session.pattern.notes).toEqual([]);
@@ -105,19 +105,20 @@ test("sequential edits use the latest committed state, including before React re
 
 test("IDs are not reused after undo, clear, or restore", () => {
   const first = session.nextId();
-  expect(first).toBeGreaterThan(Math.max(...session.pattern.notes.map(({ id }) => id)));
+  expect(first).toBeGreaterThan(Math.max(...session.pattern.notes.map(({ id }) => Number(id))));
   act(() => session.edit({ type: "place", notes: [{ id: first, step: 2, tone: 9 }] }));
   act(() => expect(session.undo()).toBe(true));
   expect(session.nextId()).toBe(first + 1);
-  act(() => session.edit({ type: "clear" }));
-  act(() => session.edit({ type: "restore" }));
+  act(() => session.clear());
+  act(() => session.restore());
   expect(session.nextId()).toBe(first + 2);
 });
 
 test("history retains at most 60 completed edits", () => {
   act(() => {
     for (let index = 0; index < 65; index++) {
-      session.edit({ type: index % 2 === 0 ? "clear" : "restore" });
+      if (index % 2 === 0) session.clear();
+      else session.restore();
     }
   });
   expect(session.pattern.notes).toEqual([]);

@@ -305,6 +305,40 @@ button svg {
   color: var(--light);
 }
 
+.mode-control {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+  padding: 10px 10px 10px 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mode-control:hover:not(:disabled) {
+  color: var(--light);
+}
+
+.connection-notice {
+  padding: 0 24px 35px;
+  text-align: center;
+}
+
+.connection-retry {
+  pointer-events: auto;
+  background: transparent;
+  color: var(--light);
+  padding: 10px;
+  text-decoration: underline;
+  text-underline-offset: 5px;
+  font-size: 12px;
+}
+
+.point-space[aria-disabled="true"],
+.point-space[aria-disabled="true"] .light-hit {
+  cursor: default;
+}
+
 .sound-control svg {
   width: 18px;
   height: 18px;
@@ -556,6 +590,11 @@ button svg {
 
   .play-button {
     width: 148px;
+  }
+
+  .mode-control {
+    font-size: 10px;
+    padding-right: 4px;
   }
 
   .sound-control {

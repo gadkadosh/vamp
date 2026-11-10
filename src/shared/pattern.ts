@@ -1,5 +1,6 @@
-import { INSTRUMENTS, INSTRUMENT_IDS, pitchIndex, STEP_COUNT } from "./score";
-import type { InstrumentId, TimedNote } from "./score";
+import { INSTRUMENTS, INSTRUMENT_IDS, pitchIndex, STEP_COUNT } from "./music";
+import type { InstrumentId, NoteId, TimedNote } from "./music";
+export type { NoteId } from "./music";
 
 // Instrument order, exposed pitches, and colors on the ascending interface axis.
 export const INSTRUMENT_LAYOUT = [
@@ -38,9 +39,9 @@ export const TONES = INSTRUMENT_LAYOUT.flatMap((entry) => {
   });
 });
 // Drafts move continuously; committed lights land on rhythmic and pitched positions.
-export type Note = { id: number; step: number; tone: number };
+export type Note = { id: NoteId; step: number; tone: number };
 export type Pattern = { notes: Note[] };
-export type Collision = { noteId: number; step: number };
+export type Collision = { noteId: NoteId; step: number };
 export type CollisionFeedback = { collisions: Collision[]; started: number };
 export type Placement = {
   document: Pattern;
@@ -127,5 +128,6 @@ export function moveNote(note: Note, stepDelta: number, toneDelta: number): Note
 
 export function noteLabel(note: Note): string {
   const instrument = INSTRUMENTS[toneFor(note).instrument];
-  return `Note ${note.id}: ${instrument.name}, ${toneFor(note).note.name}, beat position ${soundingStep(note.step) + 1} of ${STEP_COUNT}`;
+  const label = typeof note.id === "number" ? `Note ${note.id}` : "Note";
+  return `${label}: ${instrument.name}, ${toneFor(note).note.name}, beat position ${soundingStep(note.step) + 1} of ${STEP_COUNT}`;
 }

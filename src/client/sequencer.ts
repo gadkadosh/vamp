@@ -7,6 +7,7 @@ import {
   STEP_SECONDS,
 } from "./score";
 import type { InstrumentId, NoteOnset, Playback, TimedNote } from "./score";
+import type { NoteId } from "../shared/pattern";
 
 export class Sequencer {
   private context: AudioContext | null = null;
@@ -80,7 +81,7 @@ export class Sequencer {
     if (!this.context || this.startTime === null) return EMPTY_PLAYBACK;
     const time = this.context.currentTime;
     const elapsed = time - this.startTime;
-    const onsets = new Map<number, NoteOnset>();
+    const onsets = new Map<NoteId, NoteOnset>();
     for (const onset of this.onsets) {
       if (onset.time <= time) onsets.set(onset.note.noteId, onset);
     }

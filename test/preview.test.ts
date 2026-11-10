@@ -1,7 +1,7 @@
 import { expect, test } from "vite-plus/test";
 import { drawSpace } from "../src/client/drawSpace";
 import type { Scene } from "../src/client/drawSpace";
-import { compose, snapNote, toneFor } from "../src/client/pattern";
+import { compose, snapNote, toneFor } from "../src/shared/pattern";
 import { EMPTY_PLAYBACK, STEP_COUNT, STEP_SECONDS } from "../src/client/score";
 import type { Playback } from "../src/client/score";
 import { fieldBounds, layoutNotes, locate } from "../src/client/space";
