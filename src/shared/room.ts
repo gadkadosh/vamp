@@ -18,9 +18,14 @@ export type StateMessage = {
 export const MAX_MESSAGE_LENGTH = 128_000;
 export const MAX_NOTES = 1024;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const isId = (value: unknown): value is string => typeof value === "string" && uuid.test(value);
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
+
+function isId(value: unknown): value is string {
+  return typeof value === "string" && uuid.test(value);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
 
 function isNote(value: unknown): value is Note {
   return (
