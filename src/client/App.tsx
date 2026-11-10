@@ -382,8 +382,10 @@ export function App() {
               <div className="popover sketch-menu" id="sketch-menu">
                 <p className="menu-caption">{pattern.notes.length} lights in this loop</p>
                 <button
-                  disabled={!canEdit || !pattern.notes.length}
+                  disabled={!solo || !pattern.notes.length}
+                  title={solo ? undefined : "Available in Solo mode"}
                   onClick={() => {
+                    if (!solo) return;
                     edit((previous) => ({ ...previous, notes: [] }));
                     setSelected(null);
                     setFeedback(null);
@@ -395,9 +397,11 @@ export function App() {
                   Start with an empty space
                 </button>
                 <button
-                  disabled={!canEdit}
+                  disabled={!solo}
+                  title={solo ? undefined : "Available in Solo mode"}
                   onClick={() => {
-                    edit(() => (solo ? createPattern() : createPattern(() => crypto.randomUUID())));
+                    if (!solo) return;
+                    edit(() => createPattern());
                     setSelected(null);
                     setFeedback(null);
                     setMessage("Back to the starting phrase.");
@@ -408,9 +412,7 @@ export function App() {
                   Restore the starting phrase
                 </button>
                 <p className="menu-footnote">
-                  {solo
-                    ? "Both can be undone. Nothing is saved."
-                    : "Changes affect everyone and cannot be undone."}
+                  {solo ? "Both can be undone. Nothing is saved." : "Available in Solo mode."}
                 </p>
               </div>
             )}

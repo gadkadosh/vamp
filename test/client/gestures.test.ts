@@ -1326,6 +1326,39 @@ function connectRoom(pattern: Pattern = { notes: [] }) {
   return socket;
 }
 
+test.each([1, 2])("sketch action %i remains undoable in Solo", (action) => {
+  const starting = notes();
+  add(3, 7);
+  const before = notes();
+  expect(before).toHaveLength(starting.length + 1);
+  click(button("Sketch options"));
+  const option = element<HTMLButtonElement>(`.sketch-menu button:nth-of-type(${action})`);
+  expect(option.disabled).toBe(false);
+  click(option);
+  expect(notes()).toEqual(action === 1 ? [] : starting);
+  click(button("Undo"));
+  expect(notes()).toEqual(before);
+});
+
+test.each([false, true])(
+  "whole-pattern actions are disabled in shared mode (populated: %s)",
+  (populated) => {
+    const socket = connectRoom(
+      populated ? createPattern(() => crypto.randomUUID()) : { notes: [] },
+    );
+    const before = notes();
+    click(button("Sketch options"));
+    for (const option of document.querySelectorAll<HTMLButtonElement>(".sketch-menu button")) {
+      expect(option.disabled).toBe(true);
+      expect(option.title).toBe("Available in Solo mode");
+      click(option);
+    }
+    expect(element(".menu-footnote").textContent).toBe("Available in Solo mode.");
+    expect(notes()).toEqual(before);
+    expect(socket.sent).toHaveLength(0);
+  },
+);
+
 test("Solo is network-free and its sketch and history survive mode switches and URL navigation", () => {
   expect(TestSocket.instances).toHaveLength(0);
   pointer("pointerdown", 3, 7);
