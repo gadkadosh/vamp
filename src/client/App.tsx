@@ -2,7 +2,7 @@ import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } fro
 import { HelpDialog } from "./HelpDialog";
 import { Icon } from "./Icon";
 import { PointSpace } from "./PointSpace";
-import { compose, createPattern, placeNote, noteLabel, toneFor } from "../shared/pattern";
+import { compose, createPattern, moveNote, placeNote, noteLabel, toneFor } from "../shared/pattern";
 import type { CollisionFeedback, Pattern, Placement, Note, NoteId } from "../shared/pattern";
 import { Sequencer } from "./sequencer";
 import { DEFAULT_VOLUME, EMPTY_PLAYBACK, INSTRUMENTS } from "../shared/score";
@@ -190,6 +190,13 @@ export function App() {
       });
     } else commitShared(previous.present, next);
     return next;
+  }
+
+  function move(id: NoteId, stepDelta: number, toneDelta: number) {
+    if (!canEdit) return;
+    cancelGesture();
+    const note = historyRef.current.present.notes.find((note) => note.id === id);
+    if (note) place(moveNote(note, stepDelta, toneDelta));
   }
 
   function place(candidate: Note, preview = false): Placement {
@@ -430,6 +437,7 @@ export function App() {
           feedback={feedback}
           onSelect={setSelected}
           onPlace={place}
+          onMove={move}
           onEdit={edit}
           onBegin={beginGesture}
           nextId={() => (solo ? nextNote.current++ : crypto.randomUUID())}

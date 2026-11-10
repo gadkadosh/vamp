@@ -1436,6 +1436,36 @@ test("disconnect cancels unfinished gestures and reconnects without replaying ed
   expect(surface().getAttribute("aria-disabled")).toBe("false");
 });
 
+test("a keyboard nudge during a drag cannot restore a remotely deleted note", () => {
+  const note = { id: crypto.randomUUID(), step: 3, tone: 7 };
+  const socket = connectRoom({ notes: [note] });
+  pointer("pointerdown", 3, 7);
+  pointer("pointermove", 5, 9);
+  act(() => socket.receive({ revision: 1, pattern: { notes: [] } }));
+  key("ArrowRight");
+  expect(notes()).toHaveLength(0);
+  expect(socket.sent).toHaveLength(0);
+  expectFinished();
+  pointer("pointerup", 5, 9);
+  expect(notes()).toHaveLength(0);
+  expect(socket.sent).toHaveLength(0);
+});
+
+test("a keyboard nudge during a drag uses the remotely updated position", () => {
+  const note = { id: crypto.randomUUID(), step: 3, tone: 7 };
+  const socket = connectRoom({ notes: [note] });
+  pointer("pointerdown", 3, 7);
+  pointer("pointermove", 5, 9);
+  const moved = { ...note, step: 8, tone: 10 };
+  act(() => socket.receive({ revision: 1, pattern: { notes: [moved] } }));
+  key("ArrowRight");
+  expect(socket.sent).toHaveLength(1);
+  expect(socket.sent[0].changes).toEqual([{ type: "move", note: { ...moved, step: 9 } }]);
+  expectFinished();
+  pointer("pointerup", 5, 9);
+  expect(socket.sent).toHaveLength(1);
+});
+
 test("shared keyboard moves and removal send targeted changes, not pattern replacements", () => {
   const note = { id: crypto.randomUUID(), step: 3, tone: 7 };
   const socket = connectRoom({ notes: [note] });

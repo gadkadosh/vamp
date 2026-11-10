@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactNode } from "react";
 import type { Playback } from "../shared/score";
-import { moveNote, noteLabel } from "../shared/pattern";
+import { noteLabel } from "../shared/pattern";
 import type { CollisionFeedback, Pattern, Placement, Note, NoteId } from "../shared/pattern";
 import { layoutNotes, pick, SETTLE_MS } from "./space";
 import type { Size } from "./space";
@@ -15,6 +15,7 @@ type Props = {
   feedback: CollisionFeedback | null;
   onSelect: (id: NoteId | null) => void;
   onPlace: (note: Note) => Placement;
+  onMove: (id: NoteId, stepDelta: number, toneDelta: number) => void;
   onEdit: (change: (document: Pattern) => Pattern) => Pattern;
   onBegin: (cancel: () => void) => GestureEdit;
   nextId: () => NoteId;
@@ -295,7 +296,7 @@ export function PointSpace(props: Props) {
         props.onSelect(document.notes[0]?.id ?? null);
         return;
       }
-      props.onPlace(moveNote(note, ...moves[event.key]));
+      props.onMove(note.id, ...moves[event.key]);
     } else if (event.key === "Delete" || event.key === "Backspace") {
       event.preventDefault();
       if (note) remove(note.id);
