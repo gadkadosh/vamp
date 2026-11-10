@@ -1341,20 +1341,20 @@ test.each([1, 2])("sketch action %i remains undoable in Solo", (action) => {
 });
 
 test.each([false, true])(
-  "whole-pattern actions are disabled in shared mode (populated: %s)",
+  "Solo controls and an open menu disappear in shared mode (populated: %s)",
   (populated) => {
+    expect(button("Undo").disabled).toBe(true);
+    expect(button("Redo").disabled).toBe(true);
+    click(button("Sketch options"));
+    expect(element(".sketch-menu").textContent).toContain("Restore the starting phrase");
     const socket = connectRoom(
       populated ? createPattern(() => crypto.randomUUID()) : { notes: [] },
     );
-    const before = notes();
-    click(button("Sketch options"));
-    for (const option of document.querySelectorAll<HTMLButtonElement>(".sketch-menu button")) {
-      expect(option.disabled).toBe(true);
-      expect(option.title).toBe("Available in Solo mode");
-      click(option);
+    for (const label of ["Undo", "Redo", "Sketch options"]) {
+      expect(document.querySelector(`button[aria-label="${label}"]`)).toBeNull();
     }
-    expect(element(".menu-footnote").textContent).toBe("Available in Solo mode.");
-    expect(notes()).toEqual(before);
+    expect(document.querySelector(".sketch-menu")).toBeNull();
+    expect(notes()).toHaveLength(populated ? createPattern().notes.length : 0);
     expect(socket.sent).toHaveLength(0);
   },
 );
@@ -1368,18 +1368,23 @@ test("Solo is network-free and its sketch and history survive mode switches and 
   const socket = connectRoom();
   expect(window.location.pathname).toBe("/");
   expect(notes()).toHaveLength(0);
-  expect(button("Undo").disabled).toBe(true);
+  expect(document.querySelector('button[aria-label="Undo"]')).toBeNull();
   expect(socket.sent).toHaveLength(0);
   click(button("Solo mode"));
   expect(window.location.pathname).toBe("/solo");
   expect(notes()).toEqual(soloNotes);
   expect(button("Undo").disabled).toBe(false);
+  expect(button("Redo").disabled).toBe(true);
+  click(button("Sketch options"));
+  expect(element(".sketch-menu").textContent).toContain("Start with an empty space");
   expect(socket.readyState).toBe(3);
   act(() => {
     window.history.replaceState(null, "", "/");
     window.dispatchEvent(new PopStateEvent("popstate"));
   });
   expect(button("Solo mode").getAttribute("aria-pressed")).toBe("false");
+  expect(document.querySelector('button[aria-label="Undo"]')).toBeNull();
+  expect(document.querySelector(".sketch-menu")).toBeNull();
   expect(TestSocket.instances).toHaveLength(2);
 });
 

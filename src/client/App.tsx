@@ -343,80 +343,79 @@ export function App() {
           vamp<span aria-hidden="true">·</span>
         </h1>
         <nav className="header-tools" aria-label="Sketch controls">
-          <button
-            className="icon-button"
-            title={solo ? "Undo · ⌘/Ctrl Z" : "Undo is available in Solo mode"}
-            aria-label="Undo"
-            disabled={!solo || (!hasPendingEdit && !history.past.length)}
-            onClick={undo}
-          >
-            <Icon name="undo" />
-          </button>
-          <button
-            className="icon-button"
-            title={solo ? "Redo · ⌘/Ctrl Shift Z" : "Redo is available in Solo mode"}
-            aria-label="Redo"
-            disabled={!solo || !history.future.length}
-            onClick={redo}
-          >
-            <Icon name="redo" />
-          </button>
-          <div
-            className="menu-anchor"
-            ref={menuAnchor}
-            onBlur={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget)) setMenu(false);
-            }}
-          >
-            <button
-              ref={menuTrigger}
-              className="icon-button"
-              aria-label="Sketch options"
-              aria-expanded={menu}
-              aria-controls="sketch-menu"
-              onClick={() => setMenu(!menu)}
-            >
-              <Icon name="more" />
-            </button>
-            {menu && (
-              <div className="popover sketch-menu" id="sketch-menu">
-                <p className="menu-caption">{pattern.notes.length} lights in this loop</p>
+          {solo && (
+            <>
+              <button
+                className="icon-button"
+                title="Undo · ⌘/Ctrl Z"
+                aria-label="Undo"
+                disabled={!hasPendingEdit && !history.past.length}
+                onClick={undo}
+              >
+                <Icon name="undo" />
+              </button>
+              <button
+                className="icon-button"
+                title="Redo · ⌘/Ctrl Shift Z"
+                aria-label="Redo"
+                disabled={!history.future.length}
+                onClick={redo}
+              >
+                <Icon name="redo" />
+              </button>
+              <div
+                className="menu-anchor"
+                ref={menuAnchor}
+                onBlur={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget)) setMenu(false);
+                }}
+              >
                 <button
-                  disabled={!solo || !pattern.notes.length}
-                  title={solo ? undefined : "Available in Solo mode"}
-                  onClick={() => {
-                    if (!solo) return;
-                    edit((previous) => ({ ...previous, notes: [] }));
-                    setSelected(null);
-                    setFeedback(null);
-                    setMessage("An empty space. Tap anywhere to begin.");
-                    setMenu(false);
-                    menuTrigger.current?.focus();
-                  }}
+                  ref={menuTrigger}
+                  className="icon-button"
+                  aria-label="Sketch options"
+                  aria-expanded={menu}
+                  aria-controls="sketch-menu"
+                  onClick={() => setMenu(!menu)}
                 >
-                  Start with an empty space
+                  <Icon name="more" />
                 </button>
-                <button
-                  disabled={!solo}
-                  title={solo ? undefined : "Available in Solo mode"}
-                  onClick={() => {
-                    if (!solo) return;
-                    edit(() => createPattern());
-                    setSelected(null);
-                    setFeedback(null);
-                    setMessage("Back to the starting phrase.");
-                    setMenu(false);
-                    menuTrigger.current?.focus();
-                  }}
-                >
-                  Restore the starting phrase
-                </button>
-                <p className="menu-footnote">
-                  {solo ? "Both can be undone. Nothing is saved." : "Available in Solo mode."}
-                </p>
+                {menu && (
+                  <div className="popover sketch-menu" id="sketch-menu">
+                    <p className="menu-caption">{pattern.notes.length} lights in this loop</p>
+                    <button
+                      disabled={!pattern.notes.length}
+                      onClick={() => {
+                        if (!solo) return;
+                        edit((previous) => ({ ...previous, notes: [] }));
+                        setSelected(null);
+                        setFeedback(null);
+                        setMessage("An empty space. Tap anywhere to begin.");
+                        setMenu(false);
+                        menuTrigger.current?.focus();
+                      }}
+                    >
+                      Start with an empty space
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!solo) return;
+                        edit(() => createPattern());
+                        setSelected(null);
+                        setFeedback(null);
+                        setMessage("Back to the starting phrase.");
+                        setMenu(false);
+                        menuTrigger.current?.focus();
+                      }}
+                    >
+                      Restore the starting phrase
+                    </button>
+                    <p className="menu-footnote">Both can be undone. Nothing is saved.</p>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          )}
           <button
             className="help-button"
             aria-haspopup="dialog"
