@@ -10,7 +10,7 @@ export class Room extends DurableObject<Env> {
     super(ctx, env);
     void ctx.blockConcurrencyWhile(async () => {
       const saved = await ctx.storage.get<RoomState>("state");
-      this.state = saved ?? { revision: 0, pattern: createPattern(() => crypto.randomUUID()) };
+      this.state = saved ?? { revision: 0, pattern: createPattern() };
       if (!saved) await ctx.storage.put("state", this.state);
     });
   }

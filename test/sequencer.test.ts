@@ -38,7 +38,7 @@ function row(id: InstrumentId, name: string) {
 }
 
 function note(id: InstrumentId, name: string, step: number): TimedNote {
-  return { noteId: nextNoteId++, instrument: id, row: row(id, name), step };
+  return { noteId: String(nextNoteId++), instrument: id, row: row(id, name), step };
 }
 
 async function start(getNotes: () => TimedNote[] = () => []) {
@@ -62,7 +62,7 @@ function sources(context: TestAudioContext, id: InstrumentId) {
 }
 
 const floatingLight: Pattern = {
-  notes: [{ id: 1, step: 2.37, tone: 7.13 }],
+  notes: [{ id: "1", step: 2.37, tone: 7.13 }],
 };
 
 test.each([
@@ -74,7 +74,7 @@ test.each([
   "%s retains its envelope peaks, onset, and natural decay",
   async (id, name, seconds, peaks) => {
     const tone = TONES.findIndex((tone) => tone.instrument === id && tone.note.name === name);
-    const { context } = await start(() => compose({ notes: [{ id: 1, step: 0, tone }] }));
+    const { context } = await start(() => compose({ notes: [{ id: "1", step: 0, tone }] }));
     runUntil(context, 3.2);
     const voices = sources(context, id);
     expect(voices).toHaveLength(peaks.length);
@@ -104,7 +104,7 @@ test.each([
 ] as const)("%s %s is playable and schedules at its expected frequency", async (id, name, midi) => {
   const tone = TONES.findIndex((tone) => tone.instrument === id && tone.note.name === name);
   expect(tone).toBeGreaterThanOrEqual(0);
-  const { context } = await start(() => compose({ notes: [{ id: 1, step: 0, tone }] }));
+  const { context } = await start(() => compose({ notes: [{ id: "1", step: 0, tone }] }));
   const voices = carriers(context, id);
   expect(voices).toHaveLength(id === "keys" ? 4 : id === "glass" ? 3 : 1);
   expect(voices[0].frequency.value).toBeCloseTo(440 * 2 ** ((midi - 69) / 12), 10);
@@ -113,7 +113,7 @@ test.each([
 
 test("felt lights retain their partial tuning", async () => {
   const tone = TONES.findIndex((tone) => tone.instrument === "keys" && tone.note.name === "A4");
-  const { context } = await start(() => compose({ notes: [{ id: 1, step: 0, tone }] }));
+  const { context } = await start(() => compose({ notes: [{ id: "1", step: 0, tone }] }));
   const frequency = INSTRUMENTS.keys.notes[row("keys", "A4")].frequency;
   expect(carriers(context, "keys").map((source) => source.frequency.value)).toEqual(
     [1, 2.003, 3.009, 4.02].map((ratio) => frequency * ratio),
@@ -186,7 +186,7 @@ test("live timing edits use the next unscheduled audio window", async () => {
 });
 
 test("notes ring naturally across the loop seam without being cut short", async () => {
-  const notes: TimedNote[] = [{ noteId: 1, instrument: "bass", row: 5, step: 31.75 }];
+  const notes: TimedNote[] = [{ noteId: "1", instrument: "bass", row: 5, step: 31.75 }];
   const { context } = await start(() => notes);
   runUntil(context, 0.05 + 36 * STEP_SECONDS);
   const strings = plucks(context, "bass");
@@ -197,9 +197,9 @@ test("notes ring naturally across the loop seam without being cut short", async 
 
 test("bass damps only on the next bass onset, including across the loop seam", async () => {
   const notes: TimedNote[] = [
-    { noteId: 1, instrument: "bass", row: 0, step: 0 },
-    { noteId: 2, instrument: "keys", row: 0, step: 31.25 },
-    { noteId: 3, instrument: "bass", row: 1, step: 31 },
+    { noteId: "1", instrument: "bass", row: 0, step: 0 },
+    { noteId: "2", instrument: "keys", row: 0, step: 31.25 },
+    { noteId: "3", instrument: "bass", row: 1, step: 31 },
   ];
   const { context } = await start(() => notes);
   runUntil(context, 0.05 + STEP_COUNT * STEP_SECONDS + 0.1);
@@ -229,9 +229,9 @@ test.each([
   "%s chords decay independently when simultaneous and later notes overlap",
   async (id, partials, seconds) => {
     const notes: TimedNote[] = [
-      { noteId: 1, instrument: id, row: 0, step: 0 },
-      { noteId: 2, instrument: id, row: 1, step: 0 },
-      { noteId: 3, instrument: id, row: 2, step: 1 },
+      { noteId: "1", instrument: id, row: 0, step: 0 },
+      { noteId: "2", instrument: id, row: 1, step: 0 },
+      { noteId: "3", instrument: id, row: 2, step: 1 },
     ];
     const { context } = await start(() => notes);
     runUntil(context, 0.3);
@@ -464,7 +464,7 @@ test("master mute works before audio starts and unmute smoothly restores the vol
 test.each(["mallet", "keys", "bass", "glass"] as const)(
   "%s cleans up its sources and local nodes without disconnecting the channel",
   async (id) => {
-    const { context } = await start(() => [{ noteId: 1, instrument: id, row: 0, step: 0 }]);
+    const { context } = await start(() => [{ noteId: "1", instrument: id, row: 0, step: 0 }]);
     const voices = sources(context, id);
     expect(voices).toHaveLength(id === "keys" ? 4 : id === "glass" ? 3 : 1);
     for (const voice of voices) {

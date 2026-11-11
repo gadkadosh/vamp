@@ -16,6 +16,7 @@ const malletC4 = TONES.findIndex((tone) => tone.instrument === "mallet" && tone.
 const malletE4 = TONES.findIndex((tone) => tone.instrument === "mallet" && tone.note.name === "E4");
 const keysE5 = TONES.findIndex((tone) => tone.instrument === "keys" && tone.note.name === "E5");
 let root: Root;
+let seedIds: string[];
 let frames: Map<number, FrameRequestCallback>;
 let wallTime: number;
 let draws: ReturnType<typeof vi.fn<() => void>>;
@@ -129,6 +130,7 @@ beforeEach(async () => {
   document.body.append(host);
   root = createRoot(host);
   await act(async () => root.render(createElement(StrictMode, null, createElement(App))));
+  seedIds = lightIds();
 });
 
 afterEach(async () => {
@@ -152,7 +154,7 @@ function frame(milliseconds = 16) {
 }
 
 function glowAt(step: number, tone: number) {
-  const position = locate({ id: 0, step, tone }, size);
+  const position = locate({ id: "0", step, tone }, size);
   return glows.get(`${position.x}:${position.y}`);
 }
 
@@ -168,6 +170,16 @@ function surface() {
 
 function button(label: string) {
   return element<HTMLButtonElement>(`button[aria-label="${label}"]`);
+}
+
+function lightIds() {
+  return [...document.querySelectorAll<HTMLElement>("[data-light]")].map(
+    (light) => light.dataset.light!,
+  );
+}
+
+function seedSelector(index: number) {
+  return `[data-light="${seedIds[index - 1]}"]`;
 }
 
 function notes() {
@@ -206,7 +218,7 @@ function pointer(
   target = surface(),
   options: PointerEventInit = {},
 ) {
-  const position = locate({ id: 0, step, tone }, size);
+  const position = locate({ id: "0", step, tone }, size);
   act(() => {
     target.dispatchEvent(
       new PointerEvent(type, {
@@ -233,7 +245,7 @@ function paint() {
 }
 
 function drag() {
-  pointer("pointerdown", 0, malletC4, element('[data-light="1"]'));
+  pointer("pointerdown", 0, malletC4, element(seedSelector(1)));
   pointer("pointermove", 2, malletC4);
   expect(surface().classList.contains("is-dragging")).toBe(true);
 }
@@ -265,7 +277,7 @@ test("Undo cancels scattering without undoing the preceding edit or letting rele
 
 test("selecting and deselecting a light never enables Undo, even while pressed", () => {
   const before = notes();
-  const light = element('[data-light="1"]');
+  const light = element(seedSelector(1));
   for (const selected of [true, false]) {
     pointer("pointerdown", 0, malletC4, light);
     expect(button("Undo").disabled).toBe(true);
@@ -298,7 +310,7 @@ test("Undo becomes available only when a selection press turns into a drag", () 
   const before = notes();
   pointer("pointerdown", 0, malletC4);
   expect(button("Undo").disabled).toBe(true);
-  const position = locate({ id: 1, step: 0, tone: malletC4 }, size);
+  const position = locate({ id: "1", step: 0, tone: malletC4 }, size);
   pointer("pointermove", 0, malletC4, surface(), { clientX: position.x + 2 });
   expect(button("Undo").disabled).toBe(true);
   pointer("pointermove", 2, malletC4);
@@ -394,12 +406,12 @@ test("deleting during a drag removes the original note and release cannot recrea
   const before = notes();
   drag();
   key("Delete");
-  expect(document.querySelector('[data-light="1"]')).toBeNull();
+  expect(document.querySelector(seedSelector(1))).toBeNull();
   expect(notes()).toHaveLength(before.length - 1);
   expectFinished();
   pointer("pointerup", 2, malletC4);
   pointer("lostpointercapture", 2, malletC4);
-  expect(document.querySelector('[data-light="1"]')).toBeNull();
+  expect(document.querySelector(seedSelector(1))).toBeNull();
   click(button("Undo"));
   expect(notes()).toEqual(before);
   expect(button("Undo").disabled).toBe(true);
@@ -506,7 +518,7 @@ function enterSurface() {
   act(() => surface().focus());
 }
 
-function expectSelected(id: number) {
+function expectSelected(id: string) {
   const light = element<HTMLButtonElement>(`[data-light="${id}"]`);
   expect(document.activeElement).toBe(light);
   expect(light.getAttribute("aria-pressed")).toBe("true");
@@ -517,7 +529,9 @@ function expectSelected(id: number) {
 test("Page Down reaches every note in time and pitch order without editing the music", () => {
   const before = notes();
   enterSurface();
-  const order = [17, 1, 9, 2, 10, 3, 11, 19, 4, 12, 18, 5, 13, 6, 14, 7, 15, 20, 8, 16];
+  const order = [17, 1, 9, 2, 10, 3, 11, 19, 4, 12, 18, 5, 13, 6, 14, 7, 15, 20, 8, 16].map(
+    (index) => seedIds[index - 1],
+  );
   for (const id of order) {
     expect(key("PageDown").defaultPrevented).toBe(true);
     expectSelected(id);
@@ -531,31 +545,31 @@ test("Page Down reaches every note in time and pitch order without editing the m
 test("Page Up starts at the last note and cycles backwards across the loop boundary", () => {
   enterSurface();
   expect(key("PageUp").defaultPrevented).toBe(true);
-  expectSelected(16);
+  expectSelected(seedIds[15]);
   key("PageUp");
-  expectSelected(8);
+  expectSelected(seedIds[7]);
   key("PageDown");
-  expectSelected(16);
+  expectSelected(seedIds[15]);
   key("PageDown");
-  expectSelected(17);
+  expectSelected(seedIds[16]);
   key("PageUp");
-  expectSelected(16);
+  expectSelected(seedIds[15]);
 });
 
 test("a non-first note can be selected, moved, and deleted entirely from the keyboard", () => {
   const before = notes();
   enterSurface();
   key("PageUp");
-  expectSelected(16);
+  expectSelected(seedIds[15]);
   key("ArrowLeft");
-  expectSelected(16);
+  expectSelected(seedIds[15]);
   const moved = notes();
   expect(moved[15]).toContain("E5, beat position 30 of 32");
   expect(moved.filter((_, index) => index !== 15)).toEqual(
     before.filter((_, index) => index !== 15),
   );
   key("Delete");
-  expect(document.querySelector('[data-light="16"]')).toBeNull();
+  expect(document.querySelector(seedSelector(16))).toBeNull();
   expect(notes()).toEqual(moved.filter((_, index) => index !== 15));
   expect(document.activeElement).toBe(surface());
   key("z", { ctrlKey: true });
@@ -568,10 +582,10 @@ test("arrows still select a light first and then move it, with focus on that lig
   const before = notes();
   enterSurface();
   key("ArrowRight");
-  expectSelected(1);
+  expectSelected(seedIds[0]);
   expect(notes()).toEqual(before);
   key("ArrowRight");
-  expectSelected(1);
+  expectSelected(seedIds[0]);
   expect(notes()[0]).toContain("beat position 2 of 32");
 });
 
@@ -579,19 +593,20 @@ test("Enter focuses the new light; undo and redo keep focus inside the surface",
   const before = notes();
   enterSurface();
   key("Enter");
-  expectSelected(21);
+  const id = lightIds().at(-1)!;
+  expectSelected(id);
   expect(notes()).toHaveLength(before.length + 1);
   key("z", { metaKey: true });
   expect(notes()).toEqual(before);
   expect(document.activeElement).toBe(surface());
   key("z", { metaKey: true, shiftKey: true });
-  expectSelected(21);
+  expectSelected(id);
 });
 
 test("the surface has a single note tab stop and Escape restores the empty selection entry point", () => {
   enterSurface();
   key("PageDown");
-  expectSelected(17);
+  expectSelected(seedIds[16]);
   expect(surface().tabIndex).toBe(-1);
   expect(
     [...document.querySelectorAll<HTMLButtonElement>("[data-light]")].filter(
@@ -621,13 +636,13 @@ test.each(["body", '[aria-label="Mute audio"]', '[aria-label="Play loop"]'])(
   "Escape deselects globally without moving focus from %s or editing the music",
   (selector) => {
     const before = notes();
-    act(() => element('[data-light="1"]').focus());
+    act(() => element(seedSelector(1)).focus());
     const target = element(selector);
     if (target === document.body) target.tabIndex = -1;
     act(() => target.focus());
     expect(key("Escape").defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(target);
-    expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("false");
+    expect(element(seedSelector(1)).getAttribute("aria-pressed")).toBe("false");
     expect(document.querySelector(".note-tools")).toBeNull();
     expect(surface().tabIndex).toBe(0);
     expect(notes()).toEqual(before);
@@ -637,11 +652,11 @@ test.each(["body", '[aria-label="Mute audio"]', '[aria-label="Play loop"]'])(
 );
 
 test("Escape from the selected note's remove control returns focus to the surface", () => {
-  act(() => element('[data-light="1"]').focus());
+  act(() => element(seedSelector(1)).focus());
   act(() => button("Remove selected note").focus());
   expect(key("Escape").defaultPrevented).toBe(true);
   expect(document.querySelector(".note-tools")).toBeNull();
-  expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("false");
+  expect(element(seedSelector(1)).getAttribute("aria-pressed")).toBe("false");
   expect(document.activeElement).toBe(surface());
 });
 
@@ -649,7 +664,7 @@ test.each(["surface", "outside"])(
   "Escape cancels a gesture before deselecting, with focus %s the canvas",
   (focus) => {
     const before = notes();
-    act(() => element('[data-light="1"]').focus());
+    act(() => element(seedSelector(1)).focus());
     paint();
     if (focus === "outside") act(() => button("Mute audio").focus());
     const target = document.activeElement;
@@ -657,50 +672,50 @@ test.each(["surface", "outside"])(
     expect(key("Escape").defaultPrevented).toBe(true);
     expect(notes()).toEqual(before);
     expectFinished();
-    expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("true");
+    expect(element(seedSelector(1)).getAttribute("aria-pressed")).toBe("true");
     expect(button("Undo").disabled).toBe(true);
     if (focus === "outside") expect(document.activeElement).toBe(target);
     pointer("pointerup", 8, 10);
     expect(notes()).toEqual(before);
     key("Escape", { repeat: true });
-    expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("true");
+    expect(element(seedSelector(1)).getAttribute("aria-pressed")).toBe("true");
     key("Escape");
-    expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("false");
+    expect(element(seedSelector(1)).getAttribute("aria-pressed")).toBe("false");
   },
 );
 
 test("Escape closes sketch options before deselecting and ignores held repeats", () => {
-  act(() => element('[data-light="1"]').focus());
+  act(() => element(seedSelector(1)).focus());
   click(button("Sketch options"));
   act(() => element(".sketch-menu button").focus());
   expect(key("Escape").defaultPrevented).toBe(true);
   expect(document.querySelector(".sketch-menu")).toBeNull();
   expect(document.activeElement).toBe(button("Sketch options"));
-  expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("true");
+  expect(element(seedSelector(1)).getAttribute("aria-pressed")).toBe("true");
   key("Escape", { repeat: true });
-  expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("true");
+  expect(element(seedSelector(1)).getAttribute("aria-pressed")).toBe("true");
   key("Escape");
-  expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("false");
+  expect(element(seedSelector(1)).getAttribute("aria-pressed")).toBe("false");
   expect(document.activeElement).toBe(button("Sketch options"));
 });
 
 test("Escape leaves the help dialog's native dismissal alone without deselecting", () => {
-  act(() => element('[data-light="1"]').focus());
+  act(() => element(seedSelector(1)).focus());
   click(element(".help-button"));
   act(() => button("Close guide").focus());
   expect(element<HTMLDialogElement>("dialog").open).toBe(true);
   expect(key("Escape").defaultPrevented).toBe(false);
-  expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("true");
+  expect(element(seedSelector(1)).getAttribute("aria-pressed")).toBe("true");
   // happy-dom does not synthesize native dialog dismissal from keyboard events.
   click(button("Close guide"));
   expect(element<HTMLDialogElement>("dialog").open).toBe(false);
   act(() => button("Mute audio").focus());
   key("Escape");
-  expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("false");
+  expect(element(seedSelector(1)).getAttribute("aria-pressed")).toBe("false");
 });
 
 test("native help dismissal restores shortcuts and allows reopening", async () => {
-  act(() => element('[data-light="1"]').focus());
+  act(() => element(seedSelector(1)).focus());
   click(element(".help-button"));
   const dialog = element<HTMLDialogElement>("dialog");
   expect(dialog.open).toBe(true);
@@ -709,7 +724,7 @@ test("native help dismissal restores shortcuts and allows reopening", async () =
   expect(dialog.open).toBe(false);
   act(() => button("Mute audio").focus());
   key("Escape");
-  expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("false");
+  expect(element(seedSelector(1)).getAttribute("aria-pressed")).toBe("false");
 
   click(element(".help-button"));
   expect(dialog.open).toBe(true);
@@ -720,19 +735,19 @@ test("native help dismissal restores shortcuts and allows reopening", async () =
 test.each([{ ctrlKey: true }, { metaKey: true }, { altKey: true }, { isComposing: true }])(
   "Escape leaves modified or composing key events alone: %j",
   (modifiers) => {
-    act(() => element('[data-light="1"]').focus());
+    act(() => element(seedSelector(1)).focus());
     expect(key("Escape", modifiers).defaultPrevented).toBe(false);
-    expectSelected(1);
+    expectSelected(seedIds[0]);
   },
 );
 
 test("Escape respects events already handled by another control", () => {
-  act(() => element('[data-light="1"]').focus());
+  act(() => element(seedSelector(1)).focus());
   const target = button("Mute audio");
   act(() => target.focus());
   target.addEventListener("keydown", (event) => event.preventDefault(), { once: true });
   key("Escape");
-  expect(element('[data-light="1"]').getAttribute("aria-pressed")).toBe("true");
+  expect(element(seedSelector(1)).getAttribute("aria-pressed")).toBe("true");
   expect(document.activeElement).toBe(target);
 });
 
@@ -740,12 +755,12 @@ test("the selected note shows its colored pitch, instrument, and a working remov
   const before = notes();
   enterSurface();
   key("PageUp");
-  expectSelected(16);
+  expectSelected(seedIds[15]);
   expect(element(".selected-pitch").textContent).toBe("E5");
   expect(element(".selected-pitch").style.color).toBe("#e99db3");
   expect(element(".selected-material").textContent).toBe("Muted piano");
   click(button("Remove selected note"));
-  expect(document.querySelector('[data-light="16"]')).toBeNull();
+  expect(document.querySelector(seedSelector(16))).toBeNull();
   expect(notes()).toEqual(before.filter((_, index) => index !== 15));
   expect(document.activeElement).toBe(surface());
   expect(document.querySelector('[role="group"][aria-label="Selected note"]')).toBeNull();
@@ -775,7 +790,7 @@ test("note navigation preserves the existing redo branch", () => {
   enterSurface();
   key("PageDown");
   key("PageDown");
-  expectSelected(1);
+  expectSelected(seedIds[0]);
   expect(notes()).toEqual(before);
   expect(button("Undo").disabled).toBe(true);
   expect(button("Redo").disabled).toBe(false);
@@ -799,7 +814,7 @@ test("note navigation cancels an unfinished trail without committing it on relea
   paint();
   key("PageDown");
   expect(notes()).toEqual(before);
-  expectSelected(17);
+  expectSelected(seedIds[16]);
   expectFinished();
   pointer("pointerup", 8, 10);
   expect(notes()).toEqual(before);
@@ -809,8 +824,8 @@ test("note navigation cancels an unfinished trail without committing it on relea
 test("switching to pointer selection does not retain the keyboard focus treatment", () => {
   enterSurface();
   key("PageUp");
-  expectSelected(16);
-  const light = element('[data-light="1"]');
+  expectSelected(seedIds[15]);
+  const light = element(seedSelector(1));
   pointer("pointerdown", 0, malletC4, light);
   pointer("pointerup", 0, malletC4);
   expect(document.activeElement).toBe(light);
@@ -826,25 +841,25 @@ function compactNeighbors() {
   act(() => {
     size.width = 390;
     observers.get(surface())!([{ contentRect: size }]);
-    element('[data-light="3"]').focus();
+    element(seedSelector(3)).focus();
   });
   for (let step = 0; step < 3; step++) key("ArrowLeft");
-  return element('[data-light="3"]');
+  return element(seedSelector(3));
 }
 
 test.each(["select", "drag", "remove"])(
   "overlapping mobile targets %s the nearest note, not the topmost button",
   (action) => {
     const topmost = compactNeighbors();
-    const neighbor = element('[data-light="2"]');
+    const neighbor = element(seedSelector(2));
     const before = notes();
-    const center = locate({ id: 2, step: 4, tone: malletE4 }, size);
+    const center = locate({ id: "2", step: 4, tone: malletE4 }, size);
     const hit = topmost.getBoundingClientRect();
     expect(Math.hypot(center.x - (hit.x + 18), center.y - (hit.y + 18))).toBeLessThan(18);
     // The browser delivers this point to the later, overlapping button, not note 2.
     pointer("pointerdown", 4, malletE4, topmost, { button: action === "remove" ? 2 : 0 });
     if (action === "remove") {
-      expect(document.querySelector('[data-light="2"]')).toBeNull();
+      expect(document.querySelector(seedSelector(2))).toBeNull();
       expect(notes()).toEqual(before.filter((_, index) => index !== 1));
       return;
     }
@@ -875,7 +890,7 @@ test("mobile pointer hits follow a settling note rather than its committed landi
 });
 
 test("keyboard input outside the surface never steals focus or changes the selected note", () => {
-  const light = element('[data-light="1"]');
+  const light = element(seedSelector(1));
   pointer("pointerdown", 0, malletC4, light);
   pointer("pointerup", 0, malletC4);
   const mute = button("Mute audio");
@@ -907,7 +922,7 @@ test("an unavailable canvas context does not break editing or playback controls"
   expect(frames.size).toBe(0);
 });
 
-test.each(["body", ".point-space", '[data-light="1"]'])(
+test.each(["body", ".point-space", "[data-light]"])(
   "Space plays and pauses from %s without changing the music",
   async (selector) => {
     const target = element(selector);
@@ -979,7 +994,7 @@ test.each([
 });
 
 test("Space on a note's remove control does not toggle playback", async () => {
-  act(() => element('[data-light="1"]').focus());
+  act(() => element(seedSelector(1)).focus());
   act(() => button("Remove selected note").focus());
   const before = notes();
   await act(async () => {
@@ -988,7 +1003,7 @@ test("Space on a note's remove control does not toggle playback", async () => {
   expect(TestAudioContext.instances).toHaveLength(0);
   // happy-dom does not synthesize a native button click from keyboard events.
   click(button("Remove selected note"));
-  expect(document.querySelector('[data-light="1"]')).toBeNull();
+  expect(document.querySelector(seedSelector(1))).toBeNull();
   expect(notes()).toEqual(before.slice(1));
   expect(button("Play loop").getAttribute("aria-pressed")).toBe("false");
 });
@@ -1166,9 +1181,9 @@ test("idle edits redraw once and unrelated status changes do not redraw the canv
 
 test("settling keeps hit targets aligned and stops requesting frames at its final position", () => {
   add(3.4, 9.2);
-  const light = element('[data-light="21"]');
-  const from = locate({ id: 21, step: 3.4, tone: 9.2 }, size);
-  const to = locate({ id: 21, step: 3, tone: 9 }, size);
+  const light = element("[data-light]:last-of-type");
+  const from = locate({ id: "21", step: 3.4, tone: 9.2 }, size);
+  const to = locate({ id: "21", step: 3, tone: 9 }, size);
   expect(frames.size).toBe(1);
   expect(parseFloat(light.style.left)).toBeCloseTo(from.x);
   frame(90);
@@ -1199,8 +1214,8 @@ test("turning on reduced motion snaps a settling light and stops its animation",
     preference.dispatchEvent(new Event("change"));
   });
   expect(frames.size).toBe(0);
-  const to = locate({ id: 21, step: 3, tone: 9 }, size);
-  expect(parseFloat(element('[data-light="21"]').style.left)).toBeCloseTo(to.x);
+  const to = locate({ id: "21", step: 3, tone: 9 }, size);
+  expect(parseFloat(element("[data-light]:last-of-type").style.left)).toBeCloseTo(to.x);
 });
 
 test("collision feedback expires with a single redraw rather than a continuous frame loop", () => {
@@ -1254,7 +1269,7 @@ test("repitching a ringing light does not transfer its bloom to the new pitch", 
   key("PageDown");
   key("PageDown");
   key("ArrowUp");
-  expectSelected(1);
+  expectSelected(seedIds[0]);
   expect(glowAt(0, malletC4 + 1)).toBe(155);
 });
 
@@ -1264,7 +1279,7 @@ test("playback does not rewrite static hit positions or poll toolbar layout ever
   enterSurface();
   key("PageUp");
   await act(async () => button("Play loop").click());
-  const light = element('[data-light="16"]');
+  const light = element(seedSelector(16));
   const toolbar = element(".note-tools");
   const mutations: MutationRecord[] = [];
   const observer = new MutationObserver((records) => mutations.push(...records));
@@ -1312,8 +1327,8 @@ test("resizing a paused surface redraws the canvas and relocates hit targets wit
   const resized = { width: 1100, height: size.height };
   const before = draws.mock.calls.length;
   act(() => observers.get(surface())!([{ contentRect: resized }]));
-  const target = locate({ id: 16, step: 30, tone: keysE5 }, resized);
-  expect(parseFloat(element('[data-light="16"]').style.left)).toBeCloseTo(target.x);
+  const target = locate({ id: "16", step: 30, tone: keysE5 }, resized);
+  expect(parseFloat(element(seedSelector(16)).style.left)).toBeCloseTo(target.x);
   expect(element<HTMLCanvasElement>("canvas").width).toBe(1100);
   expect(draws.mock.calls.length).toBeGreaterThan(before);
   expect(frames.size).toBe(0);
@@ -1325,6 +1340,23 @@ function connectRoom(pattern: Pattern = { notes: [] }) {
   act(() => socket.receive({ revision: 0, pattern }));
   return socket;
 }
+
+test("Solo uses fresh UUIDs for starting, added, and restored notes", () => {
+  expect(seedIds).toHaveLength(20);
+  add(3, 7);
+  expect(lightIds()).toHaveLength(21);
+  const addedId = lightIds().at(-1)!;
+  click(button("Sketch options"));
+  click(element<HTMLButtonElement>(".sketch-menu button:nth-of-type(2)"));
+  const restoredIds = lightIds();
+  expect(restoredIds).toHaveLength(20);
+  const ids = [...seedIds, addedId, ...restoredIds];
+  expect(new Set(ids).size).toBe(ids.length);
+  for (const id of ids) {
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+  }
+  expect(TestSocket.instances).toHaveLength(0);
+});
 
 test.each([1, 2])("sketch action %i remains undoable in Solo", (action) => {
   const starting = notes();
@@ -1347,9 +1379,7 @@ test.each([false, true])(
     expect(button("Redo").disabled).toBe(true);
     click(button("Sketch options"));
     expect(element(".sketch-menu").textContent).toContain("Restore the starting phrase");
-    const socket = connectRoom(
-      populated ? createPattern(() => crypto.randomUUID()) : { notes: [] },
-    );
+    const socket = connectRoom(populated ? createPattern() : { notes: [] });
     for (const label of ["Undo", "Redo", "Sketch options"]) {
       expect(document.querySelector(`button[aria-label="${label}"]`)).toBeNull();
     }
@@ -1399,7 +1429,7 @@ test("the default URL connects to the room instead of starting a local sketch", 
   add(3, 7);
   expect(socket.sent).toHaveLength(0);
   expect(notes()).toHaveLength(0);
-  const pattern = createPattern(() => crypto.randomUUID());
+  const pattern = createPattern();
   act(() => socket.receive({ revision: 4, pattern }));
   expect(notes()).toHaveLength(20);
   expect(surface().getAttribute("aria-disabled")).toBe("false");

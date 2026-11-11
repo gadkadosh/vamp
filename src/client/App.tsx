@@ -32,7 +32,6 @@ export function App() {
   const getPlayback = useCallback(() => sequencerRef.current?.getPlayback() ?? EMPTY_PLAYBACK, []);
   const [selectedId, setSelected] = useState<NoteId | null>(null);
   const selected = pattern.notes.find((note) => note.id === selectedId);
-  const nextNote = useRef(createPattern().notes.length + 1);
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -441,7 +440,7 @@ export function App() {
           onMove={move}
           onEdit={edit}
           onBegin={beginGesture}
-          nextId={() => (solo ? nextNote.current++ : crypto.randomUUID())}
+          nextId={() => crypto.randomUUID()}
           getPlayback={getPlayback}
           renderSelection={(note, focusSurface) => (
             <>

@@ -59,7 +59,9 @@ export const snapNote = (note: Note): Note => ({
   tone: clamp(Math.round(note.tone), 0, TONES.length - 1),
 });
 
-export function createPattern(idFor: (index: number) => NoteId = (index) => index): Pattern {
+export function createPattern(
+  idFor: (index: number) => NoteId = () => crypto.randomUUID(),
+): Pattern {
   let id = 0;
   const notes: Note[] = [];
   for (const instrumentId of INSTRUMENT_IDS) {

@@ -71,8 +71,7 @@ export function pitchIndex(instrument: InstrumentId, name: string): number {
   return index;
 }
 
-// Solo sketches use local counters; shared notes use UUIDs.
-export type NoteId = number | string;
+export type NoteId = string;
 export type TimedNote = {
   noteId: NoteId;
   instrument: InstrumentId;
