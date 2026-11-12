@@ -1341,6 +1341,77 @@ function connectRoom(pattern: Pattern = { notes: [] }) {
   return socket;
 }
 
+test.each(["toggle", "navigation"])(
+  "switching modes via %s stops playback and starts the next composition fresh",
+  async (control) => {
+    for (const path of ["/", "/solo"]) {
+      await act(async () => button("Play loop").click());
+      const context = TestAudioContext.instances.at(-1)!;
+      context.currentTime = 2;
+      frame();
+      expect(button("Pause loop").getAttribute("aria-pressed")).toBe("true");
+
+      act(() => {
+        if (control === "toggle") button("Solo mode").click();
+        else {
+          window.history.replaceState(null, "", path);
+          window.dispatchEvent(new PopStateEvent("popstate"));
+        }
+      });
+      if (path === "/") {
+        act(() => TestSocket.instances.at(-1)!.receive({ revision: 0, pattern: createPattern() }));
+      }
+      expect(context.state).toBe("closed");
+      expect(button("Play loop").disabled).toBe(false);
+      expect(button("Play loop").getAttribute("aria-pressed")).toBe("false");
+      expect(frames.size).toBe(0);
+      const strikes = context.oscillators.length;
+      frame(1000);
+      expect(context.oscillators).toHaveLength(strikes);
+    }
+    await act(async () => button("Play loop").click());
+    const context = TestAudioContext.instances.at(-1)!;
+    expect(context.state).toBe("running");
+    expect(context.currentTime).toBe(0);
+    expect(context.oscillators.length).toBeGreaterThan(0);
+  },
+);
+
+test.each(["play", "pause"])(
+  "switching modes discards a pending %s without affecting new playback",
+  async (transition) => {
+    if (transition === "pause") await act(async () => button("Play loop").click());
+    const pending = deferred();
+    vi.spyOn(
+      TestAudioContext.prototype,
+      transition === "play" ? "resume" : "suspend",
+    ).mockImplementationOnce(() => pending.promise);
+    click(button(transition === "play" ? "Play loop" : "Pause loop"));
+    const oldContext = TestAudioContext.instances.at(-1)!;
+    expect(element<HTMLButtonElement>(".play-button").disabled).toBe(true);
+    connectRoom(createPattern());
+    expect(oldContext.state).toBe("closed");
+    expect(button("Play loop").disabled).toBe(false);
+    await act(async () => button("Play loop").click());
+    const context = TestAudioContext.instances.at(-1)!;
+    expect(context).not.toBe(oldContext);
+    await act(async () => pending.resolve());
+    expect(context.state).toBe("running");
+    expect(button("Pause loop").disabled).toBe(false);
+    expect(button("Pause loop").getAttribute("aria-busy")).toBe("false");
+    expect(frames.size).toBe(1);
+  },
+);
+
+test("mute is preserved when switching compositions", async () => {
+  click(button("Mute audio"));
+  await act(async () => button("Play loop").click());
+  connectRoom(createPattern());
+  expect(button("Unmute audio").getAttribute("aria-pressed")).toBe("true");
+  await act(async () => button("Play loop").click());
+  expect(TestAudioContext.instances.at(-1)!.gains[0].gain.value).toBe(0);
+});
+
 test("Solo uses fresh UUIDs for starting, added, and restored notes", () => {
   expect(seedIds).toHaveLength(20);
   add(3, 7);

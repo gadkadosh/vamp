@@ -70,6 +70,9 @@ export function App() {
       apply({ present: latest.current.pattern, past: [], future: [] });
     }
     setSolo(nextSolo);
+    setPlaying(false);
+    setBusy(false);
+    setError("");
     setSelected(null);
     setFeedback(null);
     setMessage("");
@@ -90,7 +93,11 @@ export function App() {
       sequencer.dispose();
       sequencerRef.current = null;
     };
-  }, []);
+  }, [solo]);
+
+  useEffect(() => {
+    sequencerRef.current?.setVolume(muted ? 0 : DEFAULT_VOLUME);
+  }, [muted, solo]);
 
   useEffect(() => {
     scoreRef.current = score;
@@ -507,10 +514,7 @@ export function App() {
           className="sound-control"
           aria-label={muted ? "Unmute audio" : "Mute audio"}
           aria-pressed={muted}
-          onClick={() => {
-            sequencerRef.current?.setVolume(muted ? DEFAULT_VOLUME : 0);
-            setMuted(!muted);
-          }}
+          onClick={() => setMuted(!muted)}
         >
           <Icon name={muted ? "mute" : "sound"} />
           <span>{muted ? "Sound off" : "Sound on"}</span>
