@@ -11,6 +11,7 @@ import type { RoomState } from "../shared/room";
 import { useRoom } from "./useRoom";
 
 type History = { present: Pattern; past: Pattern[]; future: Pattern[] };
+
 export function App() {
   const [solo, setSolo] = useState(() => window.location.pathname === "/solo");
   const soloSketch = useRef<History | null>(null);
@@ -42,6 +43,7 @@ export function App() {
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState<CollisionFeedback | null>(null);
   const [message, setMessage] = useState("");
+
   const room = useRoom(
     !solo,
     (update, pending) => {
@@ -61,6 +63,7 @@ export function App() {
 
   function changeMode(nextSolo: boolean) {
     if (nextSolo === solo) return;
+
     cancelGesture();
     if (solo) soloSketch.current = historyRef.current;
     if (nextSolo) {
@@ -69,6 +72,7 @@ export function App() {
       latest.current = { revision: 0, pattern: { notes: [] } };
       apply({ present: latest.current.pattern, past: [], future: [] });
     }
+
     setSolo(nextSolo);
     setPlaying(false);
     setBusy(false);
@@ -89,6 +93,7 @@ export function App() {
   useEffect(() => {
     const sequencer = new Sequencer(() => scoreRef.current);
     sequencerRef.current = sequencer;
+
     return () => {
       sequencer.dispose();
       sequencerRef.current = null;
@@ -151,6 +156,7 @@ export function App() {
         if (gesture.current !== active) return;
         gesture.current = null;
         setHasPendingEdit(false);
+
         const present = historyRef.current.present;
         if (!solo) {
           commitShared(active.before.present, present);
@@ -179,6 +185,7 @@ export function App() {
         present = after;
       }
     }
+
     apply({ present, past: [], future: [] });
   }
 
@@ -188,6 +195,7 @@ export function App() {
     const previous = historyRef.current;
     const next = change(previous.present);
     if (next === previous.present) return next;
+
     if (solo) {
       apply({
         present: next,
@@ -213,6 +221,7 @@ export function App() {
         collisions: [],
         accepted: false,
       };
+
     if (!preview) cancelGesture();
     const current = historyRef.current.present;
     const result = placeNote(current, candidate);
@@ -268,6 +277,7 @@ export function App() {
     if (!sequencer || busy) return;
     setBusy(true);
     setError("");
+
     try {
       if (playing) await sequencer.pause();
       else await sequencer.play();
@@ -309,12 +319,14 @@ export function App() {
       }
       return;
     }
+
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
       event.preventDefault();
       if (event.shiftKey) redo();
       else undo();
       return;
     }
+
     if (
       event.key !== " " ||
       event.defaultPrevented ||
@@ -332,6 +344,7 @@ export function App() {
       )
     )
       return;
+
     event.preventDefault();
     if (!event.repeat) void togglePlayback();
   });

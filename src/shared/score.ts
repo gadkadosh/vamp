@@ -2,6 +2,7 @@ export const TEMPO = 88;
 export const STEP_COUNT = 32;
 export const STEP_SECONDS = 60 / TEMPO / 4;
 export const DEFAULT_VOLUME = 0.35;
+
 export type Note = { name: string; frequency: number };
 
 function pitches(midis: readonly number[]): Note[] {
@@ -62,6 +63,7 @@ export const INSTRUMENTS = {
     ],
   },
 } as const;
+
 export type InstrumentId = keyof typeof INSTRUMENTS;
 export const INSTRUMENT_IDS = Object.keys(INSTRUMENTS) as readonly InstrumentId[];
 
@@ -84,4 +86,5 @@ export type Playback = {
   position: number | null;
   onsets: ReadonlyMap<NoteId, NoteOnset>;
 };
+
 export const EMPTY_PLAYBACK: Playback = { time: 0, position: null, onsets: new Map() };

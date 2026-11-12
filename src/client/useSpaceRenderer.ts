@@ -23,6 +23,7 @@ export function useSpaceRenderer(
   const tools = useRef<HTMLDivElement>(null);
   const elements = useRef(new Map<NoteId, HTMLButtonElement>());
   const motion = useRef<SettlingMotion | null>(null);
+
   let notes = document.notes;
   if (draft) {
     if (notes.some(({ id }) => id === draft.id)) {
@@ -88,9 +89,11 @@ export function useSpaceRenderer(
           !notes.some(({ id }) => id === settling.to.id))
       )
         motion.current = null;
+
       const points = layoutNotes(notes, size, motion.current, now);
       context.clearRect(0, -bounds.top, size.width, bounds.height);
       drawSpace(context, scene, size, getPlayback(), points, now);
+
       // React positions static lights. Only a settling light needs per-frame DOM updates.
       if (settling) {
         const point = points.find(({ note }) => note.id === settling.to.id);
@@ -100,6 +103,7 @@ export function useSpaceRenderer(
           target.style.top = `${point.position.y}px`;
         }
       }
+
       const selectedPoint = points.find(({ note }) => note.id === scene.selected);
       if (toolbar && toolbarSize && selectedPoint) {
         const { width, height } = toolbarSize;
@@ -111,6 +115,7 @@ export function useSpaceRenderer(
         if (toolbarPosition?.y !== y) toolbar.style.top = `${y}px`;
         toolbarPosition = { x, y };
       }
+
       if (scene.playing || motion.current) requestDraw();
     };
 
@@ -121,6 +126,7 @@ export function useSpaceRenderer(
             if (frame === null) draw();
           }, remaining)
         : undefined;
+
     const observer = toolbar
       ? new ResizeObserver(() => {
           const width = toolbar.offsetWidth;
@@ -131,8 +137,10 @@ export function useSpaceRenderer(
           }
         })
       : null;
+
     draw();
     if (toolbar) observer?.observe(toolbar);
+
     return () => {
       if (frame !== null) cancelAnimationFrame(frame);
       clearTimeout(feedbackTimer);

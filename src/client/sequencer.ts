@@ -49,6 +49,7 @@ export class Sequencer {
 
   private async start() {
     if (this.disposed || this.timer !== undefined) return;
+
     // Create and resume only from the Play gesture, never on page load.
     if (!this.context) {
       this.context = new AudioContext();
@@ -61,9 +62,11 @@ export class Sequencer {
         this.channels.set(id, channel);
       }
     }
+
     await this.context.resume();
     if (this.disposed) return;
     if (this.context.state !== "running") throw new Error("Audio could not start");
+
     if (this.startTime === null) {
       this.startTime = this.context.currentTime + 0.05;
     }
@@ -76,6 +79,7 @@ export class Sequencer {
   private transition(action: () => Promise<void>): Promise<void> {
     const result = this.pendingTransition ? this.pendingTransition.then(action, action) : action();
     this.pendingTransition = result;
+
     const clear = () => {
       if (this.pendingTransition === result) this.pendingTransition = null;
     };
@@ -128,9 +132,11 @@ export class Sequencer {
     const from = Math.max(start, now, this.scheduledUntil);
     const until = now + 0.1;
     if (from >= until) return;
+
     const loopSeconds = STEP_COUNT * STEP_SECONDS;
     // One loop of actual strikes is sufficient for blooms, without retaining deleted notes forever.
     this.onsets = this.onsets.filter((onset) => onset.time >= now - loopSeconds);
+
     const starts: NoteOnset[] = [];
     for (
       let loop = Math.floor((from - start) / loopSeconds);
@@ -142,6 +148,7 @@ export class Sequencer {
         if (time >= from && time < until) starts.push({ note, time });
       }
     }
+
     starts.sort((a, b) => a.time - b.time);
     for (const { note, time } of starts) {
       const instrument = INSTRUMENTS[note.instrument];
@@ -158,6 +165,7 @@ export class Sequencer {
       if (stop) this.monoVoices.set(note.instrument, stop);
       this.onsets.push({ note: { ...note }, time });
     }
+
     // A rolling, half-open audio-time window prevents duplicate strikes, handles
     // fractional onsets, and skips missed events after a background-tab stall.
     this.scheduledUntil = until;

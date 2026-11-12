@@ -130,6 +130,7 @@ export function drawSpace(
       if (toneFor(note).instrument === "glass")
         ring(context, position, radius + expansion * 45, alpha(color, (1 - age / 1.1) * 0.09));
     }
+
     const core = context.createRadialGradient(
       position.x,
       position.y,
@@ -159,6 +160,7 @@ export function drawSpace(
     const from = locate(draft, size);
     const target = locate(landing, size);
     const color = scene.preview.collisions.length ? "#f4a391" : "#d7ded0";
+
     context.setLineDash([2, 6]);
     line(
       context,
@@ -176,6 +178,7 @@ export function drawSpace(
       ],
       `${color}3b`,
     );
+
     context.setLineDash([]);
     line(context, [from, target], `${color}59`);
     ring(context, target, 5, `${color}bf`);

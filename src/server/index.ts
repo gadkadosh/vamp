@@ -27,6 +27,7 @@ export class Room extends DurableObject<Env> {
       socket.close(1009, "Edit is too large or is not text.");
       return;
     }
+
     let parsed: unknown;
     try {
       parsed = JSON.parse(data);
@@ -34,11 +35,13 @@ export class Room extends DurableObject<Env> {
       this.send(socket, { error: "Invalid edit." });
       return;
     }
+
     const edit = parseEdit(parsed);
     if (!edit) {
       this.send(socket, { error: "Invalid edit." });
       return;
     }
+
     await this.ctx.blockConcurrencyWhile(async () => {
       let pattern;
       try {
@@ -47,9 +50,11 @@ export class Room extends DurableObject<Env> {
         this.send(socket, { requestId: edit.requestId, error: (error as Error).message });
         return;
       }
+
       const next = { revision: this.state.revision + 1, pattern };
       // Save before acknowledging or broadcasting; clients only see durable state.
       await this.ctx.storage.put("state", next);
+
       this.state = next;
       for (const peer of this.ctx.getWebSockets()) this.send(peer, { requestId: edit.requestId });
     });
@@ -81,6 +86,7 @@ export default {
     if (request.method === "GET" && url.pathname === "/api/health") {
       return Response.json({ ok: true });
     }
+
     if (url.pathname === "/api/room" && request.method === "GET") {
       if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
         return new Response("WebSocket required", { status: 426 });
@@ -89,6 +95,7 @@ export default {
       if (origin && origin !== url.origin) return new Response("Forbidden", { status: 403 });
       return env.ROOM.getByName("global").fetch(request);
     }
+
     return new Response("Not found", { status: 404 });
   },
 } satisfies ExportedHandler<Env>;
