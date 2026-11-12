@@ -1,6 +1,6 @@
-import { STEP_COUNT } from "./score";
-import { clamp, TONES } from "./pattern";
-import type { Note } from "./pattern";
+import { STEP_COUNT } from "../shared/score";
+import { clamp, TONES } from "../shared/pattern";
+import type { Note } from "../shared/pattern";
 
 export type Size = { width: number; height: number };
 export type Position = { x: number; y: number };

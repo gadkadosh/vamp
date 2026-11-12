@@ -1,9 +1,9 @@
 import { useLayoutEffect, useRef } from "react";
 import { drawSpace, FEEDBACK_MS } from "./drawSpace";
 import type { Scene } from "./drawSpace";
-import { clamp, findCollisions } from "./pattern";
-import type { Note } from "./pattern";
-import type { Playback } from "./score";
+import { clamp, findCollisions } from "../shared/pattern";
+import type { Note, NoteId } from "../shared/pattern";
+import type { Playback } from "../shared/score";
 import { layoutNotes, SETTLE_MS } from "./space";
 import type { SettlingMotion, Size } from "./space";
 
@@ -21,7 +21,7 @@ export function useSpaceRenderer(
   const canvas = useRef<HTMLCanvasElement>(null);
   const canvasBounds = useRef({ top: 0, height: 0 });
   const tools = useRef<HTMLDivElement>(null);
-  const elements = useRef(new Map<number, HTMLButtonElement>());
+  const elements = useRef(new Map<NoteId, HTMLButtonElement>());
   const motion = useRef<SettlingMotion | null>(null);
   let notes = document.notes;
   if (draft) {

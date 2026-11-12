@@ -5,8 +5,16 @@ import {
   INSTRUMENT_IDS,
   STEP_COUNT,
   STEP_SECONDS,
-} from "./score";
-import type { InstrumentId, NoteOnset, Playback, TimedNote } from "./score";
+} from "../shared/score";
+import type { InstrumentId, NoteId, NoteOnset, Playback, TimedNote } from "../shared/score";
+import { scheduleGlass, scheduleMallet, startBass, startFeltKeys } from "./voices";
+
+const VOICES = {
+  mallet: scheduleMallet,
+  keys: startFeltKeys,
+  bass: startBass,
+  glass: scheduleGlass,
+};
 
 export class Sequencer {
   private context: AudioContext | null = null;
@@ -80,7 +88,7 @@ export class Sequencer {
     if (!this.context || this.startTime === null) return EMPTY_PLAYBACK;
     const time = this.context.currentTime;
     const elapsed = time - this.startTime;
-    const onsets = new Map<number, NoteOnset>();
+    const onsets = new Map<NoteId, NoteOnset>();
     for (const onset of this.onsets) {
       if (onset.time <= time) onsets.set(onset.note.noteId, onset);
     }
@@ -140,7 +148,7 @@ export class Sequencer {
       const channel = this.channels.get(note.instrument);
       if (!channel) throw new Error(`Missing audio channel for ${note.instrument}`);
       this.monoVoices.get(note.instrument)?.(time);
-      const stop = instrument.start(
+      const stop = VOICES[note.instrument](
         this.context,
         channel,
         instrument.notes[note.row].frequency,

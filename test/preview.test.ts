@@ -1,14 +1,14 @@
 import { expect, test } from "vite-plus/test";
 import { drawSpace } from "../src/client/drawSpace";
 import type { Scene } from "../src/client/drawSpace";
-import { compose, snapNote, toneFor } from "../src/client/pattern";
-import { EMPTY_PLAYBACK, STEP_COUNT, STEP_SECONDS } from "../src/client/score";
-import type { Playback } from "../src/client/score";
+import { compose, snapNote, toneFor } from "../src/shared/pattern";
+import { EMPTY_PLAYBACK, STEP_COUNT, STEP_SECONDS } from "../src/shared/score";
+import type { Playback } from "../src/shared/score";
 import { fieldBounds, layoutNotes, locate } from "../src/client/space";
 
 const size = { width: 900, height: 600 };
-const document: Scene["document"] = { notes: [{ id: 1, step: 2, tone: 7 }] };
-const candidate = { id: 2, step: 12.31, tone: 11.18 };
+const document: Scene["document"] = { notes: [{ id: "1", step: 2, tone: 7 }] };
+const candidate = { id: "2", step: 12.31, tone: 11.18 };
 
 type Gradient = { stops: { offset: number; color: string }[] };
 type Circle = { x: number; y: number; radius: number };
@@ -84,7 +84,7 @@ function playback(time = onsetTime): Playback {
   return {
     time,
     position: ((time - 0.05) / STEP_SECONDS) % STEP_COUNT,
-    onsets: new Map([[1, { note: compose(document)[0], time: onsetTime }]]),
+    onsets: new Map([["1", { note: compose(document)[0], time: onsetTime }]]),
   };
 }
 
@@ -137,7 +137,7 @@ test.each([390, 900])(
 
 test("selection intensifies the material without adding a ring or moving the light", () => {
   const idle = render(scene);
-  const selected = render({ ...scene, selected: 1 });
+  const selected = render({ ...scene, selected: "1" });
   const color = toneFor(document.notes[0]).color;
   expect(selected.strokes).toEqual([]);
   expect(selected.fills[1]).toMatchObject({
@@ -206,7 +206,7 @@ test("placement reveals both full snapped guides and a landing point without edi
 test("an occupied landing highlights the conflict without replacing the existing light", () => {
   const recorded = render({
     ...scene,
-    preview: { note: { id: 2, step: 2.1, tone: 7.1 }, collisions: [{ noteId: 1, step: 2 }] },
+    preview: { note: { id: "2", step: 2.1, tone: 7.1 }, collisions: [{ noteId: "1", step: 2 }] },
   });
   expect(recorded.strokes.find((stroke) => stroke.dash.length)?.color).toBe("#f4a3913b");
   expect(recorded.strokes).toContainEqual(
@@ -216,14 +216,14 @@ test("an occupied landing highlights the conflict without replacing the existing
     }),
   );
   expect(core(recorded)?.circle).toEqual({
-    ...locate(snapNote({ id: 2, step: 2.1, tone: 7.1 }), size),
+    ...locate(snapNote({ id: "2", step: 2.1, tone: 7.1 }), size),
     radius: 1,
   });
-  expect(document.notes).toEqual([{ id: 1, step: 2, tone: 7 }]);
+  expect(document.notes).toEqual([{ id: "1", step: 2, tone: 7 }]);
 });
 
 test("collision feedback expires without leaving a permanent outline", () => {
-  const feedback = { collisions: [{ noteId: 1, step: 2 }], started: 100 };
+  const feedback = { collisions: [{ noteId: "1", step: 2 }], started: 100 };
   expect(render({ ...scene, feedback }, size, EMPTY_PLAYBACK, 200).strokes).toHaveLength(1);
   expect(render({ ...scene, feedback }, size, EMPTY_PLAYBACK, 900).strokes).toEqual([]);
 });
@@ -237,7 +237,7 @@ test("a buffered future onset cannot illuminate a note early", () => {
   expect(render(scene, size, playback(onsetTime - 0.01)).fills).toEqual(render(scene).fills);
 });
 
-test.each([{ id: 2 }, { step: 3 }, { tone: 8 }, { tone: 10 }])(
+test.each([{ id: "2" }, { step: 3 }, { tone: 8 }, { tone: 10 }])(
   "an onset does not transfer to a newly created, moved, or repitched light: %j",
   (change) => {
     const state = { ...scene, document: { notes: [{ ...document.notes[0], ...change }] } };
@@ -246,13 +246,13 @@ test.each([{ id: 2 }, { step: 3 }, { tone: 8 }, { tone: 10 }])(
 );
 
 test("a true onset carries its bloom across the loop seam without inventing later strikes", () => {
-  const note = { id: 1, step: 31, tone: 7 };
+  const note = { id: "1", step: 31, tone: 7 };
   const state = { ...scene, document: { notes: [note] } };
   const time = 0.05 + 33 * STEP_SECONDS;
   const clock: Playback = {
     time,
     position: 1,
-    onsets: new Map([[1, { note: compose(state.document)[0], time: 0.05 + 31 * STEP_SECONDS }]]),
+    onsets: new Map([["1", { note: compose(state.document)[0], time: 0.05 + 31 * STEP_SECONDS }]]),
   };
   expect(render(state, size, clock).fills[0].circle?.radius).toBeCloseTo(
     155 + 70 * Math.exp(-2 * STEP_SECONDS * 3.1),

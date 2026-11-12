@@ -1,6 +1,6 @@
 import { vi } from "vite-plus/test";
-import { INSTRUMENT_IDS } from "../src/client/score";
-import type { InstrumentId } from "../src/client/score";
+import { INSTRUMENT_IDS } from "../src/shared/score";
+import type { InstrumentId } from "../src/shared/score";
 
 export function deferred() {
   let resolve: () => void;

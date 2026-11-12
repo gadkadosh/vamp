@@ -8,7 +8,11 @@ A musical sketchbook for composing loops with light.
 
 Built with React, TypeScript, Canvas 2D, and native Web Audio synthesis.
 
-Sketches aren’t saved; reloading starts fresh.
+The main page is one public composition: everyone can edit it, and changes are saved and shared live.
+Playback and sound controls are personal, not synchronized.
+
+Turn on **Solo mode** (or open `/solo`) to sketch privately in this tab. Solo sketches are kept
+while switching modes, but reloading starts fresh. Undo and redo are available only in Solo mode.
 
 ## Development
 

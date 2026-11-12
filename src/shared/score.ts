@@ -1,5 +1,3 @@
-import { scheduleGlass, scheduleMallet, startBass, startFeltKeys } from "./voices";
-
 export const TEMPO = 88;
 export const STEP_COUNT = 32;
 export const STEP_SECONDS = 60 / TEMPO / 4;
@@ -19,7 +17,6 @@ export const INSTRUMENTS = {
     name: "Mallet",
     polyphonic: true,
     notes: pitches([69, 67, 64, 62, 60, 57, 55, 52, 50]),
-    start: scheduleMallet,
     seed: [
       ["C4", 0],
       ["E4", 4],
@@ -35,7 +32,6 @@ export const INSTRUMENTS = {
     name: "Muted piano",
     polyphonic: true,
     notes: pitches([79, 76, 74, 72, 71, 69, 67, 65, 64, 62, 60]),
-    start: startFeltKeys,
     seed: [
       ["E5", 2],
       ["D5", 6],
@@ -51,7 +47,6 @@ export const INSTRUMENTS = {
     name: "Plucked bass",
     polyphonic: false,
     notes: pitches([48, 45, 43, 40, 38, 36]),
-    start: startBass,
     seed: [
       ["C2", 0],
       ["G2", 16],
@@ -61,7 +56,6 @@ export const INSTRUMENTS = {
     name: "Glass chimes",
     polyphonic: true,
     notes: pitches([88, 86, 84, 81, 79, 76, 74, 72]),
-    start: scheduleGlass,
     seed: [
       ["E5", 10],
       ["C6", 26],
@@ -77,8 +71,9 @@ export function pitchIndex(instrument: InstrumentId, name: string): number {
   return index;
 }
 
+export type NoteId = string;
 export type TimedNote = {
-  noteId: number;
+  noteId: NoteId;
   instrument: InstrumentId;
   row: number;
   step: number;
@@ -87,6 +82,6 @@ export type NoteOnset = { readonly note: Readonly<TimedNote>; readonly time: num
 export type Playback = {
   time: number;
   position: number | null;
-  onsets: ReadonlyMap<number, NoteOnset>;
+  onsets: ReadonlyMap<NoteId, NoteOnset>;
 };
 export const EMPTY_PLAYBACK: Playback = { time: 0, position: null, onsets: new Map() };
