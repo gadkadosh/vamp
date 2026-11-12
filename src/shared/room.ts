@@ -50,6 +50,7 @@ export function parseEdit(value: unknown): EditMessage | null {
     value.changes.length > MAX_NOTES * 2
   )
     return null;
+
   const changes: Change[] = [];
   for (const change of value.changes) {
     if (!isRecord(change)) return null;
@@ -60,6 +61,7 @@ export function parseEdit(value: unknown): EditMessage | null {
       changes.push({ type: change.type, note: { id, step, tone } });
     } else return null;
   }
+
   return { type: "edit", requestId: value.requestId, changes };
 }
 
@@ -67,9 +69,11 @@ export function changesBetween(before: Pattern, after: Pattern): Change[] {
   const previous = new Map(before.notes.map((note) => [note.id, note]));
   const next = new Map(after.notes.map((note) => [note.id, note]));
   const changes: Change[] = [];
+
   for (const note of before.notes) {
     if (!next.has(note.id)) changes.push({ type: "remove", id: note.id });
   }
+
   for (const note of after.notes) {
     const old = previous.get(note.id);
     if (!old) changes.push({ type: "add", note });
@@ -82,6 +86,7 @@ export function changesBetween(before: Pattern, after: Pattern): Change[] {
 export function applyChanges(pattern: Pattern, changes: Change[]): Pattern {
   const notes = new Map(pattern.notes.map((note) => [note.id, note]));
   const touched = new Set<NoteId>();
+
   for (const change of changes) {
     const id = change.type === "remove" ? change.id : change.note.id;
     if (touched.has(id)) throw new Error("A light can only change once per edit.");
@@ -95,6 +100,7 @@ export function applyChanges(pattern: Pattern, changes: Change[]): Pattern {
       notes.set(id, change.note);
     }
   }
+
   if (notes.size > MAX_NOTES) throw new Error("This composition has too many lights.");
   const next = { notes: [...notes.values()] };
   if (next.notes.some((note) => findCollisions(next, note).length)) {

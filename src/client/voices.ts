@@ -6,15 +6,18 @@ export function scheduleMallet(
 ) {
   const oscillator = context.createOscillator();
   const envelope = context.createGain();
+
   oscillator.type = "sine";
   oscillator.frequency.value = frequency;
   envelope.gain.setValueAtTime(0, time);
   envelope.gain.linearRampToValueAtTime(0.12, time + 0.02);
   envelope.gain.exponentialRampToValueAtTime(0.0001, time + 0.85);
   envelope.gain.linearRampToValueAtTime(0, time + 0.9);
+
   oscillator.connect(envelope).connect(output);
   oscillator.start(time);
   oscillator.stop(time + 0.9);
+
   oscillator.onended = () => {
     oscillator.disconnect();
     envelope.disconnect();
@@ -31,14 +34,17 @@ function ringPartials(
   for (const [ratio, peak, duration] of partials) {
     const oscillator = context.createOscillator();
     const envelope = context.createGain();
+
     oscillator.frequency.value = frequency * ratio;
     envelope.gain.setValueAtTime(0, time);
     envelope.gain.linearRampToValueAtTime(peak, time + 0.008);
     envelope.gain.exponentialRampToValueAtTime(0.0001, time + duration);
     envelope.gain.linearRampToValueAtTime(0, time + duration + 0.03);
+
     oscillator.connect(envelope).connect(output);
     oscillator.start(time);
     oscillator.stop(time + duration + 0.03);
+
     oscillator.onended = () => {
       oscillator.disconnect();
       envelope.disconnect();
@@ -83,6 +89,7 @@ function pluckedString(context: BaseAudioContext, frequency: number) {
     cache = new Map();
     plucks.set(context, cache);
   }
+
   let buffer = cache.get(frequency);
   if (!buffer) {
     buffer = context.createBuffer(
@@ -98,6 +105,7 @@ function pluckedString(context: BaseAudioContext, frequency: number) {
       const phase = (2 * Math.PI * i) / (delay + 0.5);
       data[i] = 0.7 * Math.sin(phase) + 0.22 * Math.sin(phase * 2) + 0.05 * (seed / 2 ** 32 - 0.5);
     }
+
     const damping = Math.exp(-1 / (frequency * 1.2));
     for (let i = delay; i < data.length; i++) {
       data[i] = damping * 0.5 * (data[i - delay] + (i > delay ? data[i - delay - 1] : 0));
@@ -118,23 +126,28 @@ export function startBass(
   const envelope = context.createGain();
   const gate = context.createGain();
   const end = time + BASS.seconds;
+
   source.buffer = pluckedString(context, frequency);
   body.type = "lowpass";
   body.frequency.value = BASS.cutoff;
   body.Q.value = 0.5;
+
   envelope.gain.setValueAtTime(0, time);
   envelope.gain.linearRampToValueAtTime(BASS.peak, time + BASS.attack);
   envelope.gain.setValueAtTime(BASS.peak, end - 0.08);
   envelope.gain.linearRampToValueAtTime(0, end);
+
   source.connect(body).connect(envelope).connect(gate).connect(output);
   source.start(time);
   source.stop(end);
+
   source.onended = () => {
     source.disconnect();
     body.disconnect();
     envelope.disconnect();
     gate.disconnect();
   };
+
   // Fade out at the next bass onset without touching notes that have already ended.
   return (next: number) => {
     if (next >= end) return;

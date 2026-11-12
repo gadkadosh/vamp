@@ -66,6 +66,7 @@ export function PointSpace(props: Props) {
     window.addEventListener("blur", blur);
     window.addEventListener("keydown", keyDown, true);
     window.addEventListener("pointerdown", pointerDown, true);
+
     return () => {
       window.removeEventListener("blur", blur);
       window.removeEventListener("keydown", keyDown, true);
@@ -90,9 +91,11 @@ export function PointSpace(props: Props) {
       setSize({ width: entry.contentRect.width, height: entry.contentRect.height }),
     );
     observer.observe(surface.current!);
+
     const preference = matchMedia("(prefers-reduced-motion: reduce)");
     const update = () => setReducedMotion(preference.matches);
     preference.addEventListener("change", update);
+
     return () => {
       observer.disconnect();
       preference.removeEventListener("change", update);
@@ -156,6 +159,7 @@ export function PointSpace(props: Props) {
 
   function pointerDown(event: PointerEvent<HTMLDivElement>) {
     if (props.readOnly || gesture.current || (event.button !== 0 && event.button !== 2)) return;
+
     const position = coordinates(event);
     // Overlapping buttons receive events in DOM order, not by proximity to the visible lights.
     const points = layoutNotes(props.document.notes, size, motion.current, performance.now());
@@ -168,6 +172,7 @@ export function PointSpace(props: Props) {
         distance = gap;
       }
     }
+
     const note = nearest?.note;
     const target = note ? elements.current.get(note.id) : null;
     if (event.button === 2) {
@@ -177,6 +182,7 @@ export function PointSpace(props: Props) {
       }
       return;
     }
+
     const center = nearest?.position ?? position;
     event.preventDefault();
     const paint = event.shiftKey && !note;
@@ -192,6 +198,7 @@ export function PointSpace(props: Props) {
     };
     event.currentTarget.setPointerCapture(event.pointerId);
     setDragging(true);
+
     // A press on an existing light is only selection until it becomes a drag.
     if (!note) gesture.current.edit.activate();
     if (paint) {
@@ -199,6 +206,7 @@ export function PointSpace(props: Props) {
       gesture.current.edit.place(newNote(position.x, position.y));
       return;
     }
+
     let initial = note ?? newNote(position.x, position.y);
     if (
       note &&
@@ -240,6 +248,7 @@ export function PointSpace(props: Props) {
       active.edit.cancel();
       return;
     }
+
     gesture.current = null;
     setDragging(false);
     if (draftRef.current) {
@@ -255,6 +264,7 @@ export function PointSpace(props: Props) {
       }
       updateDraft(null);
     }
+
     active.edit.commit();
     releasePointer(active.pointer);
   }
@@ -271,6 +281,7 @@ export function PointSpace(props: Props) {
     const document = gesture.current?.before ?? props.document;
     if (direction || moves[event.key] || ["Enter", "Delete", "Backspace"].includes(event.key))
       gesture.current?.edit.cancel();
+
     const note = document.notes.find((item) => item.id === props.selected);
     if (direction) {
       event.preventDefault();

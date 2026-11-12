@@ -25,6 +25,7 @@ export const INSTRUMENT_LAYOUT = [
   color: string;
   notes: readonly string[];
 }[];
+
 export const TONES = INSTRUMENT_LAYOUT.flatMap((entry) => {
   const instrument = INSTRUMENTS[entry.instrument];
   return entry.notes.map((name) => {
@@ -38,6 +39,7 @@ export const TONES = INSTRUMENT_LAYOUT.flatMap((entry) => {
     };
   });
 });
+
 // Drafts move continuously; committed lights land on rhythmic and pitched positions.
 export type Note = { id: NoteId; step: number; tone: number };
 export type Pattern = { notes: Note[] };
@@ -49,6 +51,7 @@ export type Placement = {
   collisions: Collision[];
   accepted: boolean;
 };
+
 export const clamp = (value: number, min = 0, max = 1) => Math.max(min, Math.min(max, value));
 export const wrapStep = (step: number) => ((step % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
 export const toneFor = (note: Note) => TONES[clamp(Math.round(note.tone), 0, TONES.length - 1)];
@@ -98,10 +101,12 @@ export function placeNote(document: Pattern, candidate: Note): Placement {
   const note = snapNote(candidate);
   const collisions = findCollisions(document, note);
   if (collisions.length) return { document, note, collisions, accepted: false };
+
   const previous = document.notes.find((item) => item.id === note.id);
   if (previous && previous.step === note.step && previous.tone === note.tone) {
     return { document, note: previous, collisions: [], accepted: true };
   }
+
   const notes = previous
     ? document.notes.map((item) => (item.id === note.id ? note : item))
     : [...document.notes, note];

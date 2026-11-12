@@ -19,15 +19,18 @@ export function useRoom(
     let stopped = false;
     let retry: ReturnType<typeof setTimeout> | undefined;
     let delay = 500;
+
     function connect() {
       if (stopped) return;
       setStatus("connecting");
       setPending(false);
+
       const url = new URL("/api/room", window.location.href);
       url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
       const socket = new WebSocket(url);
       socketRef.current = socket;
       timeout.current = setTimeout(() => socket.close(), 10_000);
+
       socket.onmessage = (event) => {
         if (stopped) return;
         let message: StateMessage;
@@ -43,6 +46,7 @@ export function useRoom(
           socket.close();
           return;
         }
+
         if (message.requestId === pendingId.current || message.error) {
           pendingId.current = null;
           setPending(false);
@@ -51,10 +55,12 @@ export function useRoom(
           clearTimeout(timeout.current);
           setPending(false);
         }
+
         delay = 500;
         setStatus("connected");
         receive(message, pendingId.current !== null);
       };
+
       socket.onerror = () => socket.close();
       socket.onclose = () => {
         if (stopped) return;
@@ -64,11 +70,14 @@ export function useRoom(
         setPending(false);
         setStatus("offline");
         disconnect();
+
         retry = setTimeout(connect, delay);
         delay = Math.min(delay * 2, 10_000);
       };
     }
+
     connect();
+
     return () => {
       stopped = true;
       clearTimeout(retry);
@@ -82,6 +91,7 @@ export function useRoom(
   function send(changes: Change[]) {
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN || pendingId.current) return false;
+
     const requestId = crypto.randomUUID();
     try {
       socket.send(JSON.stringify({ type: "edit", requestId, changes } satisfies EditMessage));
@@ -89,6 +99,7 @@ export function useRoom(
       socket.close();
       return false;
     }
+
     pendingId.current = requestId;
     setPending(true);
     clearTimeout(timeout.current);
