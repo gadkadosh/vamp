@@ -751,22 +751,30 @@ test("Escape respects events already handled by another control", () => {
   expect(document.activeElement).toBe(target);
 });
 
-test("the selected note shows its colored pitch, instrument, and a working remove button; undo restores it", () => {
-  const before = notes();
-  enterSurface();
-  key("PageUp");
-  expectSelected(seedIds[15]);
-  expect(element(".selected-pitch").textContent).toBe("E5");
-  expect(element(".selected-pitch").style.color).toBe("#e99db3");
-  expect(element(".selected-material").textContent).toBe("Muted piano");
-  click(button("Remove selected note"));
-  expect(document.querySelector(seedSelector(16))).toBeNull();
-  expect(notes()).toEqual(before.filter((_, index) => index !== 15));
-  expect(document.activeElement).toBe(surface());
-  expect(document.querySelector('[role="group"][aria-label="Selected note"]')).toBeNull();
-  click(button("Undo"));
-  expect(notes()).toEqual(before);
-});
+test.each(["button", "Delete", "Backspace", "right-click"])(
+  "%s removes the selected note, clears its details, and creates one Solo undo entry",
+  (control) => {
+    const before = notes();
+    enterSurface();
+    key("PageUp");
+    expectSelected(seedIds[15]);
+    expect(element(".selected-pitch").textContent).toBe("E5");
+    expect(element(".selected-pitch").style.color).toBe("#e99db3");
+    expect(element(".selected-material").textContent).toBe("Muted piano");
+    if (control === "button") click(button("Remove selected note"));
+    else if (control === "right-click")
+      pointer("pointerdown", 30, keysE5, surface(), { button: 2 });
+    else key(control);
+    expect(document.querySelector(seedSelector(16))).toBeNull();
+    expect(notes()).toEqual(before.filter((_, index) => index !== 15));
+    expect(document.activeElement).toBe(surface());
+    expect(document.querySelector('[role="group"][aria-label="Selected note"]')).toBeNull();
+    if (control === "button") expect(element(".gesture-hint").textContent).toBe("Note removed.");
+    click(button("Undo"));
+    expect(notes()).toEqual(before);
+    expect(button("Undo").disabled).toBe(true);
+  },
+);
 
 test("selected note details follow pitch and instrument changes", () => {
   enterSurface();
@@ -1605,28 +1613,40 @@ test("a keyboard nudge during a drag uses the remotely updated position", () => 
   expect(socket.sent).toHaveLength(1);
 });
 
-test("shared keyboard moves and removal send targeted changes, not pattern replacements", () => {
-  const note = { id: crypto.randomUUID(), step: 3, tone: 7 };
-  const socket = connectRoom({ notes: [note] });
-  act(() => element(`[data-light="${note.id}"]`).focus());
-  key("ArrowRight");
-  expect(socket.sent[0].changes).toEqual([{ type: "move", note: { ...note, step: 4 } }]);
-  act(() =>
-    socket.receive(
-      { revision: 1, pattern: { notes: [{ ...note, step: 4 }] } },
-      { requestId: socket.sent[0].requestId },
-    ),
-  );
-  key("Delete");
-  expect(socket.sent[1].changes).toEqual([{ type: "remove", id: note.id }]);
-  act(() =>
-    socket.receive(
-      { revision: 2, pattern: { notes: [] } },
-      { requestId: socket.sent[1].requestId },
-    ),
-  );
-  expect(notes()).toHaveLength(0);
-});
+test.each(["button", "Delete", "Backspace", "right-click"])(
+  "shared moves and %s removal send targeted changes, not pattern replacements",
+  (control) => {
+    const note = { id: crypto.randomUUID(), step: 3, tone: 7 };
+    const socket = connectRoom({ notes: [note] });
+    act(() => element(`[data-light="${note.id}"]`).focus());
+    key("ArrowRight");
+    expect(socket.sent[0].changes).toEqual([{ type: "move", note: { ...note, step: 4 } }]);
+    act(() =>
+      socket.receive(
+        { revision: 1, pattern: { notes: [{ ...note, step: 4 }] } },
+        { requestId: socket.sent[0].requestId },
+      ),
+    );
+    if (control === "button") click(button("Remove selected note"));
+    else if (control === "right-click")
+      pointer("pointerdown", 4, note.tone, surface(), { button: 2 });
+    else key(control);
+    expect(socket.sent).toHaveLength(2);
+    expect(socket.sent[1].changes).toEqual([{ type: "remove", id: note.id }]);
+    expect(notes()).toHaveLength(0);
+    expect(document.activeElement).toBe(surface());
+    expect(document.querySelector('[role="group"][aria-label="Selected note"]')).toBeNull();
+    if (control === "button") expect(element(".gesture-hint").textContent).toBe("Note removed.");
+    act(() =>
+      socket.receive(
+        { revision: 2, pattern: { notes: [] } },
+        { requestId: socket.sent[1].requestId },
+      ),
+    );
+    expect(notes()).toHaveLength(0);
+    expect(surface().getAttribute("aria-disabled")).toBe("false");
+  },
+);
 
 test("an acknowledgement timeout reconnects and loads saved state instead of retrying the edit", () => {
   const socket = connectRoom();

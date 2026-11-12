@@ -206,6 +206,16 @@ export function App() {
     return next;
   }
 
+  function removeNote(id: NoteId) {
+    if (!canEdit) return;
+    edit((previous) =>
+      previous.notes.some((note) => note.id === id)
+        ? { ...previous, notes: previous.notes.filter((note) => note.id !== id) }
+        : previous,
+    );
+    setSelected(null);
+  }
+
   function move(id: NoteId, stepDelta: number, toneDelta: number) {
     if (!canEdit) return;
     cancelGesture();
@@ -458,7 +468,7 @@ export function App() {
           onSelect={setSelected}
           onPlace={place}
           onMove={move}
-          onEdit={edit}
+          onRemove={removeNote}
           onBegin={beginGesture}
           nextId={() => crypto.randomUUID()}
           getPlayback={getPlayback}
@@ -476,11 +486,7 @@ export function App() {
                 aria-label="Remove selected note"
                 disabled={!canEdit}
                 onClick={() => {
-                  edit((previous) => ({
-                    ...previous,
-                    notes: previous.notes.filter(({ id }) => id !== note.id),
-                  }));
-                  setSelected(null);
+                  removeNote(note.id);
                   setMessage("Note removed.");
                   focusSurface();
                 }}

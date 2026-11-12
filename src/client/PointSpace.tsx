@@ -16,7 +16,7 @@ type Props = {
   onSelect: (id: NoteId | null) => void;
   onPlace: (note: Note) => Placement;
   onMove: (id: NoteId, stepDelta: number, toneDelta: number) => void;
-  onEdit: (change: (document: Pattern) => Pattern) => Pattern;
+  onRemove: (id: NoteId) => void;
   onBegin: (cancel: () => void) => GestureEdit;
   nextId: () => NoteId;
   getPlayback: () => Playback;
@@ -148,12 +148,7 @@ export function PointSpace(props: Props) {
   }
 
   function remove(id: NoteId) {
-    props.onEdit((document) =>
-      document.notes.some((note) => note.id === id)
-        ? { ...document, notes: document.notes.filter((note) => note.id !== id) }
-        : document,
-    );
-    props.onSelect(null);
+    props.onRemove(id);
     surface.current?.focus();
   }
 
