@@ -1519,6 +1519,67 @@ test("Solo is network-free and its sketch and history survive mode switches and 
   expect(TestSocket.instances).toHaveLength(2);
 });
 
+test.each(["toggle", "navigation"])(
+  "switching modes via %s cancels a Solo preview without changing its undo or redo history",
+  (control) => {
+    const starting = notes();
+    add(3, 7);
+    const edited = notes();
+    click(button("Undo"));
+    paint();
+    expect(notes()).toHaveLength(starting.length + 2);
+
+    act(() => {
+      if (control === "toggle") button("Solo mode").click();
+      else {
+        window.history.replaceState(null, "", "/");
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      }
+    });
+    expectFinished();
+    pointer("pointerup", 8, 10);
+    const socket = TestSocket.instances.at(-1)!;
+    act(() => socket.receive({ revision: 0, pattern: { notes: [] } }));
+    expect(socket.sent).toHaveLength(0);
+    click(button("Solo mode"));
+    expect(notes()).toEqual(starting);
+    expect(button("Undo").disabled).toBe(true);
+    expect(button("Redo").disabled).toBe(false);
+    pointer("pointerup", 8, 10);
+    expect(notes()).toEqual(starting);
+    click(button("Redo"));
+    expect(notes()).toEqual(edited);
+    click(button("Undo"));
+    expect(notes()).toEqual(starting);
+  },
+);
+
+test("mode switches discard an unacknowledged shared preview without changing Solo or replaying it", () => {
+  add(3, 7);
+  const soloIds = lightIds();
+  const socket = connectRoom();
+  add(5, 9);
+  expect(socket.sent).toHaveLength(1);
+  expect(lightIds()).toHaveLength(1);
+  click(button("Solo mode"));
+  expect(socket.readyState).toBe(3);
+  expect(lightIds()).toEqual(soloIds);
+  click(button("Undo"));
+  expect(lightIds()).toEqual(seedIds);
+  click(button("Redo"));
+  expect(lightIds()).toEqual(soloIds);
+
+  click(button("Solo mode"));
+  const reconnected = TestSocket.instances.at(-1)!;
+  expect(reconnected).not.toBe(socket);
+  expect(lightIds()).toHaveLength(0);
+  const saved = { id: crypto.randomUUID(), step: 8, tone: 10 };
+  act(() => reconnected.receive({ revision: 1, pattern: { notes: [saved] } }));
+  expect(lightIds()).toEqual([saved.id]);
+  expect(reconnected.sent).toHaveLength(0);
+  expect(surface().getAttribute("aria-disabled")).toBe("false");
+});
+
 test("the default URL connects to the room instead of starting a local sketch", async () => {
   await act(async () => root.render(null));
   window.history.replaceState(null, "", "/");
@@ -1585,6 +1646,59 @@ test("a remote edit during a gesture is preserved without becoming part of the l
   expect(notes()).toHaveLength(2);
   expect(surface().getAttribute("aria-disabled")).toBe("false");
 });
+
+test("canceling a shared preview reveals the latest remote state and release cannot recommit it", () => {
+  const original = { id: crypto.randomUUID(), step: 3, tone: 7 };
+  const socket = connectRoom({ notes: [original] });
+  pointer("pointerdown", 10, 9, surface(), { shiftKey: true });
+  expect(notes()).toHaveLength(2);
+  const remote = { id: crypto.randomUUID(), step: 5, tone: 10 };
+  act(() => socket.receive({ revision: 1, pattern: { notes: [remote] } }));
+  key("Escape");
+  expect(lightIds()).toEqual([remote.id]);
+  expectFinished();
+  pointer("pointermove", 12, 9);
+  pointer("pointerup", 12, 9);
+  expect(lightIds()).toEqual([remote.id]);
+  expect(socket.sent).toHaveLength(0);
+});
+
+test.each(["acknowledgement", "rejection", "disconnect"])(
+  "an unrelated remote update keeps the pending preview until %s",
+  (outcome) => {
+    const socket = connectRoom();
+    add(3, 7);
+    const request = socket.sent[0];
+    const change = request.changes[0];
+    if (change.type !== "add") throw new Error("Expected an added light");
+    const remote = { id: crypto.randomUUID(), step: 5, tone: 10 };
+    act(() => socket.receive({ revision: 1, pattern: { notes: [remote] } }));
+    expect(lightIds()).toEqual([change.note.id]);
+    expect(surface().getAttribute("aria-disabled")).toBe("true");
+
+    if (outcome === "disconnect") {
+      act(() => socket.close());
+    } else {
+      act(() =>
+        socket.receive(
+          {
+            revision: outcome === "acknowledgement" ? 2 : 1,
+            pattern: { notes: outcome === "acknowledgement" ? [remote, change.note] : [remote] },
+          },
+          {
+            requestId: request.requestId,
+            ...(outcome === "rejection" ? { error: "That sound is already here." } : {}),
+          },
+        ),
+      );
+    }
+    expect(lightIds()).toEqual(
+      outcome === "acknowledgement" ? [remote.id, change.note.id] : [remote.id],
+    );
+    expect(surface().getAttribute("aria-disabled")).toBe(String(outcome === "disconnect"));
+    expect(socket.sent).toHaveLength(1);
+  },
+);
 
 test("disconnect cancels unfinished gestures and reconnects without replaying edits", () => {
   const socket = connectRoom();

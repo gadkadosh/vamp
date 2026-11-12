@@ -2,38 +2,17 @@ import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } fro
 import { HelpDialog } from "./HelpDialog";
 import { Icon } from "./Icon";
 import { PointSpace } from "./PointSpace";
-import {
-  compose,
-  createSeedPattern,
-  moveNote,
-  placeNote,
-  noteLabel,
-  toneFor,
-} from "../shared/pattern";
-import type { CollisionFeedback, Pattern, Placement, Note, NoteId } from "../shared/pattern";
+import { compose, noteLabel, toneFor } from "../shared/pattern";
+import type { CollisionFeedback, Placement, Note, NoteId } from "../shared/pattern";
 import { Sequencer } from "./sequencer";
 import { DEFAULT_VOLUME, EMPTY_PLAYBACK, INSTRUMENTS } from "../shared/score";
-import { applyChanges, changesBetween } from "../shared/room";
-import type { RoomState } from "../shared/room";
-import { useRoom } from "./useRoom";
-
-type History = { present: Pattern; past: Pattern[]; future: Pattern[] };
+import { useComposition } from "./useComposition";
+import type { EditPlacement } from "./useComposition";
 
 export function App() {
-  const [solo, setSolo] = useState(() => window.location.pathname === "/solo");
-  const soloSketch = useRef<History | null>(null);
-  const latest = useRef<RoomState>({ revision: 0, pattern: { notes: [] } });
-  const [history, setHistory] = useState<History>(() => ({
-    present: solo ? createSeedPattern() : { notes: [] },
-    past: [],
-    future: [],
-  }));
-  const historyRef = useRef(history);
-  const gesture = useRef<{ before: History; selected: NoteId | null; cancel: () => void } | null>(
-    null,
-  );
-  const [hasPendingEdit, setHasPendingEdit] = useState(false);
-  const pattern = history.present;
+  const [message, setMessage] = useState("");
+  const composition = useComposition(setMessage);
+  const { solo, pattern, canEdit, cancelGesture } = composition;
   const score = useMemo(() => compose(pattern), [pattern]);
   const scoreRef = useRef(score);
   const sequencerRef = useRef<Sequencer | null>(null);
@@ -49,38 +28,10 @@ export function App() {
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState<CollisionFeedback | null>(null);
-  const [message, setMessage] = useState("");
-
-  const room = useRoom(
-    !solo,
-    (update, pending) => {
-      latest.current = update.state;
-      if (!gesture.current && !pending) {
-        apply({ present: update.state.pattern, past: [], future: [] });
-      }
-      if (update.error) setMessage(update.error);
-    },
-    () => {
-      cancelGesture();
-      apply({ present: latest.current.pattern, past: [], future: [] });
-      setMessage("Connection lost. Your last edit may not have been saved.");
-    },
-  );
-  const canEdit = solo || (room.status === "connected" && !room.pending);
 
   function changeMode(nextSolo: boolean) {
-    if (nextSolo === solo) return;
+    if (!composition.changeMode(nextSolo)) return;
 
-    cancelGesture();
-    if (solo) soloSketch.current = historyRef.current;
-    if (nextSolo) {
-      apply(soloSketch.current ?? { present: createSeedPattern(), past: [], future: [] });
-    } else {
-      latest.current = { revision: 0, pattern: { notes: [] } };
-      apply({ present: latest.current.pattern, past: [], future: [] });
-    }
-
-    setSolo(nextSolo);
     setPlaying(false);
     setBusy(false);
     setError("");
@@ -132,159 +83,65 @@ export function App() {
     return () => document.removeEventListener("pointerdown", outside);
   }, [menu]);
 
-  function apply(next: History) {
-    historyRef.current = next;
-    setHistory(next);
-  }
-
-  function cancelGesture() {
-    const active = gesture.current;
-    if (!active) return false;
-    gesture.current = null;
-    setHasPendingEdit(false);
-    apply(solo ? active.before : { present: latest.current.pattern, past: [], future: [] });
-    setSelected(active.selected);
-    setFeedback(null);
-    setMessage("Gesture canceled.");
-    active.cancel();
-    return true;
-  }
-
   function beginGesture(cancel: () => void) {
-    cancelGesture();
-    const active = { before: historyRef.current, selected: selectedId, cancel };
-    gesture.current = active;
+    const session = composition.beginGesture(() => {
+      setSelected(selectedId);
+      setFeedback(null);
+      setMessage("Gesture canceled.");
+      cancel();
+    });
     return {
-      activate: () => {
-        if (gesture.current === active) setHasPendingEdit(true);
-      },
-      place: (note: Note) => (gesture.current === active ? place(note, true) : null),
-      commit: () => {
-        if (gesture.current !== active) return;
-        gesture.current = null;
-        setHasPendingEdit(false);
-
-        const present = historyRef.current.present;
-        if (!solo) {
-          commitShared(active.before.present, present);
-        } else if (present !== active.before.present) {
-          apply({
-            present,
-            past: [...active.before.past, active.before.present].slice(-60),
-            future: [],
-          });
-        }
-      },
-      cancel: () => {
-        if (gesture.current === active) cancelGesture();
+      ...session,
+      place: (note: Note) => {
+        const result = session.place(note);
+        if (result) showPlacement(result);
+        return result;
       },
     };
   }
 
-  function commitShared(before: Pattern, after: Pattern) {
-    const changes = changesBetween(before, after);
-    let present = latest.current.pattern;
-    if (changes.length && room.send(changes)) {
-      try {
-        present = applyChanges(present, changes);
-      } catch {
-        // Keep the local preview until the server explains a concurrent conflict.
-        present = after;
-      }
-    }
-
-    apply({ present, past: [], future: [] });
-  }
-
-  function edit(change: (document: Pattern) => Pattern) {
-    if (!canEdit) return historyRef.current.present;
-    cancelGesture();
-    const previous = historyRef.current;
-    const next = change(previous.present);
-    if (next === previous.present) return next;
-
-    if (solo) {
-      apply({
-        present: next,
-        past: [...previous.past, previous.present].slice(-60),
-        future: [],
-      });
-    } else commitShared(previous.present, next);
-    return next;
-  }
-
   function removeNote(id: NoteId) {
     if (!canEdit) return;
-    edit((previous) =>
-      previous.notes.some((note) => note.id === id)
-        ? { ...previous, notes: previous.notes.filter((note) => note.id !== id) }
-        : previous,
-    );
+    composition.remove(id);
     setSelected(null);
   }
 
   function move(id: NoteId, stepDelta: number, toneDelta: number) {
-    if (!canEdit) return;
-    cancelGesture();
-    const note = historyRef.current.present.notes.find((note) => note.id === id);
-    if (note) place(moveNote(note, stepDelta, toneDelta));
+    const result = composition.move(id, stepDelta, toneDelta);
+    if (result) showPlacement(result);
   }
 
-  function place(candidate: Note, preview = false): Placement {
-    if (!canEdit)
-      return {
-        document: historyRef.current.present,
-        note: candidate,
-        collisions: [],
-        accepted: false,
-      };
-
-    if (!preview) cancelGesture();
-    const current = historyRef.current.present;
-    const result = placeNote(current, candidate);
-    if (result.accepted) {
-      if (preview) apply({ ...historyRef.current, present: result.document });
-      else edit(() => result.document);
-      setFeedback(null);
-      setSelected(result.note.id);
-      if (result.document !== current) setMessage("A note, settled into the phrase.");
-    } else {
-      setFeedback({ collisions: result.collisions, started: performance.now() });
-      setMessage(
-        toneFor(candidate).instrument === "bass"
-          ? "That bass beat is occupied. Try another landing."
-          : "That sound is already here. Try another pitch or beat.",
-      );
-      if (!current.notes.some(({ id }) => id === candidate.id))
-        setSelected(result.collisions[0].noteId);
-    }
+  function place(candidate: Note): Placement {
+    const result = composition.place(candidate);
+    if (canEdit) showPlacement(result);
     return result;
   }
 
+  function showPlacement(result: EditPlacement) {
+    if (result.accepted) {
+      setFeedback(null);
+      setSelected(result.note.id);
+      if (result.changed) setMessage("A note, settled into the phrase.");
+    } else {
+      setFeedback({ collisions: result.collisions, started: performance.now() });
+      setMessage(
+        toneFor(result.note).instrument === "bass"
+          ? "That bass beat is occupied. Try another landing."
+          : "That sound is already here. Try another pitch or beat.",
+      );
+      if (!result.document.notes.some(({ id }) => id === result.note.id))
+        setSelected(result.collisions[0].noteId);
+    }
+  }
+
   function undo() {
-    if (!solo) return;
-    if (cancelGesture()) return;
-    const current = historyRef.current;
-    if (!current.past.length) return;
-    apply({
-      present: current.past[current.past.length - 1],
-      past: current.past.slice(0, -1),
-      future: [current.present, ...current.future],
-    });
+    if (!composition.undo()) return;
     setFeedback(null);
     setMessage("One gesture back.");
   }
 
   function redo() {
-    if (!solo) return;
-    cancelGesture();
-    const current = historyRef.current;
-    if (!current.future.length) return;
-    apply({
-      present: current.future[0],
-      past: [...current.past, current.present],
-      future: current.future.slice(1),
-    });
+    if (!composition.redo()) return;
     setFeedback(null);
     setMessage("One gesture forward.");
   }
@@ -385,7 +242,7 @@ export function App() {
                 className="icon-button"
                 title="Undo · ⌘/Ctrl Z"
                 aria-label="Undo"
-                disabled={!hasPendingEdit && !history.past.length}
+                disabled={!composition.canUndo}
                 onClick={undo}
               >
                 <Icon name="undo" />
@@ -394,7 +251,7 @@ export function App() {
                 className="icon-button"
                 title="Redo · ⌘/Ctrl Shift Z"
                 aria-label="Redo"
-                disabled={!history.future.length}
+                disabled={!composition.canRedo}
                 onClick={redo}
               >
                 <Icon name="redo" />
@@ -422,8 +279,7 @@ export function App() {
                     <button
                       disabled={!pattern.notes.length}
                       onClick={() => {
-                        if (!solo) return;
-                        edit((previous) => ({ ...previous, notes: [] }));
+                        composition.clear();
                         setSelected(null);
                         setFeedback(null);
                         setMessage("An empty space. Tap anywhere to begin.");
@@ -435,8 +291,7 @@ export function App() {
                     </button>
                     <button
                       onClick={() => {
-                        if (!solo) return;
-                        edit(() => createSeedPattern());
+                        composition.restore();
                         setSelected(null);
                         setFeedback(null);
                         setMessage("Back to the starting phrase.");
@@ -551,11 +406,11 @@ export function App() {
         <p className="mode-status" role="status">
           {solo
             ? "Only this tab. Not saved."
-            : room.status === "connecting"
+            : composition.status === "connecting"
               ? "Connecting…"
-              : room.status === "offline"
+              : composition.status === "offline"
                 ? "Reconnecting… Editing is paused."
-                : room.pending
+                : composition.pending
                   ? "Saving…"
                   : "Everyone can edit. Changes are saved."}
         </p>
