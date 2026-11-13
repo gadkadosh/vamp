@@ -77,7 +77,7 @@ export function HelpDialog({
           <dt>Let it ring</dt>
           <dd>
             Press Play. The lights bloom as their sounds unfold. Playback and sound controls are
-            just for you. Higher notes change from bass through mallet and muted piano to glass.
+            just for you. From bottom to top: bass, mallet, muted piano, then glass.
           </dd>
         </div>
         <div>

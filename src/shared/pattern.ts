@@ -1,43 +1,27 @@
 import { INSTRUMENTS, INSTRUMENT_IDS, pitchIndex, STEP_COUNT } from "./score";
 import type { InstrumentId, NoteId, TimedNote } from "./score";
+import { STARTING_PHRASE } from "./seed";
 export type { NoteId } from "./score";
 
-// Instrument order, exposed pitches, and colors on the ascending interface axis.
+// Presentation only: pitch ranges come from the score and may overlap between instruments.
 export const INSTRUMENT_LAYOUT = [
-  {
-    instrument: "bass",
-    color: "#6dcbb0",
-    notes: ["C2", "D2", "E2", "G2", "A2", "C3"],
-  },
-  {
-    instrument: "mallet",
-    color: "#efbb67",
-    notes: ["D3", "E3", "G3", "A3", "C4", "D4", "E4"],
-  },
-  {
-    instrument: "keys",
-    color: "#e99db3",
-    notes: ["F4", "G4", "A4", "B4", "C5", "D5", "E5", "G5"],
-  },
-  { instrument: "glass", color: "#a5b4f6", notes: ["A5", "C6", "D6", "E6"] },
-] as const satisfies readonly {
-  instrument: InstrumentId;
-  color: string;
-  notes: readonly string[];
-}[];
+  { instrument: "bass", color: "#6dcbb0" },
+  { instrument: "mallet", color: "#efbb67" },
+  { instrument: "keys", color: "#e99db3" },
+  { instrument: "glass", color: "#a5b4f6" },
+] as const satisfies readonly { instrument: InstrumentId; color: string }[];
 
 export const TONES = INSTRUMENT_LAYOUT.flatMap((entry) => {
   const instrument = INSTRUMENTS[entry.instrument];
-  return entry.notes.map((name) => {
-    const row = pitchIndex(entry.instrument, name);
-    return {
+  return instrument.notes
+    .map((note, row) => ({
       instrument: entry.instrument,
       polyphonic: instrument.polyphonic,
       color: entry.color,
       row,
-      note: instrument.notes[row],
-    };
-  });
+      note,
+    }))
+    .sort((a, b) => a.note.frequency - b.note.frequency);
 });
 
 // Drafts move continuously; committed lights land on rhythmic and pitched positions.
@@ -62,23 +46,17 @@ export const snapNote = (note: Note): Note => ({
   tone: clamp(Math.round(note.tone), 0, TONES.length - 1),
 });
 
-export function createPattern(
+export function createSeedPattern(
   idFor: (index: number) => NoteId = () => crypto.randomUUID(),
 ): Pattern {
   let id = 0;
   const notes: Note[] = [];
   for (const instrumentId of INSTRUMENT_IDS) {
-    const instrument = INSTRUMENTS[instrumentId];
-    const candidates = TONES.map((tone, index) => ({ ...tone, index })).filter(
-      (tone) => tone.instrument === instrumentId,
-    );
-    if (!candidates.length) throw new Error(`No instrument layout for ${instrumentId}`);
-    for (const [name, step] of instrument.seed) {
-      const frequency = instrument.notes[pitchIndex(instrumentId, name)].frequency;
-      const closest = candidates.reduce((a, b) =>
-        Math.abs(a.note.frequency - frequency) <= Math.abs(b.note.frequency - frequency) ? a : b,
-      );
-      notes.push({ id: idFor(++id), step, tone: closest.index });
+    for (const [name, step] of STARTING_PHRASE[instrumentId]) {
+      const row = pitchIndex(instrumentId, name);
+      const tone = TONES.findIndex((tone) => tone.instrument === instrumentId && tone.row === row);
+      if (tone < 0) throw new Error(`No instrument layout for ${instrumentId}`);
+      notes.push({ id: idFor(++id), step, tone });
     }
   }
   return { notes };

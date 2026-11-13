@@ -2,7 +2,14 @@ import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } fro
 import { HelpDialog } from "./HelpDialog";
 import { Icon } from "./Icon";
 import { PointSpace } from "./PointSpace";
-import { compose, createPattern, moveNote, placeNote, noteLabel, toneFor } from "../shared/pattern";
+import {
+  compose,
+  createSeedPattern,
+  moveNote,
+  placeNote,
+  noteLabel,
+  toneFor,
+} from "../shared/pattern";
 import type { CollisionFeedback, Pattern, Placement, Note, NoteId } from "../shared/pattern";
 import { Sequencer } from "./sequencer";
 import { DEFAULT_VOLUME, EMPTY_PLAYBACK, INSTRUMENTS } from "../shared/score";
@@ -17,7 +24,7 @@ export function App() {
   const soloSketch = useRef<History | null>(null);
   const latest = useRef<RoomState>({ revision: 0, pattern: { notes: [] } });
   const [history, setHistory] = useState<History>(() => ({
-    present: solo ? createPattern() : { notes: [] },
+    present: solo ? createSeedPattern() : { notes: [] },
     past: [],
     future: [],
   }));
@@ -67,7 +74,7 @@ export function App() {
     cancelGesture();
     if (solo) soloSketch.current = historyRef.current;
     if (nextSolo) {
-      apply(soloSketch.current ?? { present: createPattern(), past: [], future: [] });
+      apply(soloSketch.current ?? { present: createSeedPattern(), past: [], future: [] });
     } else {
       latest.current = { revision: 0, pattern: { notes: [] } };
       apply({ present: latest.current.pattern, past: [], future: [] });
@@ -429,7 +436,7 @@ export function App() {
                     <button
                       onClick={() => {
                         if (!solo) return;
-                        edit(() => createPattern());
+                        edit(() => createSeedPattern());
                         setSelected(null);
                         setFeedback(null);
                         setMessage("Back to the starting phrase.");

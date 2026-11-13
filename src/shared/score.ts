@@ -3,65 +3,46 @@ export const STEP_COUNT = 32;
 export const STEP_SECONDS = 60 / TEMPO / 4;
 export const DEFAULT_VOLUME = 0.35;
 
-export type Note = { name: string; frequency: number };
+const PITCH_CLASSES = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"] as const;
+type PitchClass = (typeof PITCH_CLASSES)[number];
+type Pitch = `${PitchClass}${0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8}`;
 
-function pitches(midis: readonly number[]): Note[] {
-  const names = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
-  return midis.map((midi) => ({
-    name: `${names[midi % 12]}${Math.floor(midi / 12) - 1}`,
-    frequency: 440 * 2 ** ((midi - 69) / 12),
-  }));
+function defineInstrument<const Pitches extends readonly Pitch[]>(instrument: {
+  name: string;
+  polyphonic: boolean;
+  notes: Pitches;
+}) {
+  return {
+    ...instrument,
+    notes: instrument.notes.map((name: Pitches[number]) => {
+      const pitchClass = name.slice(0, -1) as PitchClass;
+      const midi = (Number(name.at(-1)) + 1) * 12 + PITCH_CLASSES.indexOf(pitchClass);
+      return { name, frequency: 440 * 2 ** ((midi - 69) / 12) };
+    }),
+  };
 }
 
 export const INSTRUMENTS = {
-  mallet: {
+  mallet: defineInstrument({
     name: "Mallet",
     polyphonic: true,
-    notes: pitches([69, 67, 64, 62, 60, 57, 55, 52, 50]),
-    seed: [
-      ["C4", 0],
-      ["E4", 4],
-      ["G4", 8],
-      ["E4", 12],
-      ["D4", 16],
-      ["A4", 20],
-      ["G4", 24],
-      ["E4", 28],
-    ],
-  },
-  keys: {
+    notes: ["A4", "G4", "E4", "D4", "C4", "A3", "G3", "E3", "D3"],
+  }),
+  keys: defineInstrument({
     name: "Muted piano",
     polyphonic: true,
-    notes: pitches([79, 76, 74, 72, 71, 69, 67, 65, 64, 62, 60]),
-    seed: [
-      ["E5", 2],
-      ["D5", 6],
-      ["C5", 10],
-      ["B4", 14],
-      ["C5", 18],
-      ["G4", 22],
-      ["A4", 26],
-      ["E5", 30],
-    ],
-  },
-  bass: {
+    notes: ["G5", "E5", "D5", "C5", "B4", "A4", "G4", "F4", "E4", "D4", "C4"],
+  }),
+  bass: defineInstrument({
     name: "Plucked bass",
     polyphonic: false,
-    notes: pitches([48, 45, 43, 40, 38, 36]),
-    seed: [
-      ["C2", 0],
-      ["G2", 16],
-    ],
-  },
-  glass: {
+    notes: ["C3", "A2", "G2", "E2", "D2", "C2"],
+  }),
+  glass: defineInstrument({
     name: "Glass chimes",
     polyphonic: true,
-    notes: pitches([88, 86, 84, 81, 79, 76, 74, 72]),
-    seed: [
-      ["E5", 10],
-      ["C6", 26],
-    ],
-  },
+    notes: ["E6", "D6", "C6", "A5", "G5", "E5", "D5", "C5"],
+  }),
 } as const;
 
 export type InstrumentId = keyof typeof INSTRUMENTS;

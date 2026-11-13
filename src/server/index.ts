@@ -1,7 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
-import { createPattern } from "../shared/pattern";
-import { applyChanges, MAX_MESSAGE_LENGTH, parseEdit } from "../shared/room";
+import { createSeedPattern } from "../shared/pattern";
+import { applyChanges, MAX_MESSAGE_LENGTH, parseEdit, TONE_LAYOUT_VERSION } from "../shared/room";
 import type { RoomState, StateMessage } from "../shared/room";
+import { migrateLegacyPattern } from "./migratePattern";
 
 export class Room extends DurableObject<Env> {
   private state!: RoomState;
@@ -10,8 +11,19 @@ export class Room extends DurableObject<Env> {
     super(ctx, env);
     void ctx.blockConcurrencyWhile(async () => {
       const saved = await ctx.storage.get<RoomState>("state");
-      this.state = saved ?? { revision: 0, pattern: createPattern() };
-      if (!saved) await ctx.storage.put("state", this.state);
+      const toneLayout = await ctx.storage.get<number>("toneLayout");
+      this.state = saved
+        ? {
+            ...saved,
+            pattern:
+              toneLayout === TONE_LAYOUT_VERSION
+                ? saved.pattern
+                : migrateLegacyPattern(saved.pattern),
+          }
+        : { revision: 0, pattern: createSeedPattern() };
+      if (!saved || toneLayout !== TONE_LAYOUT_VERSION) {
+        await ctx.storage.put({ state: this.state, toneLayout: TONE_LAYOUT_VERSION });
+      }
     });
   }
 
@@ -38,7 +50,7 @@ export class Room extends DurableObject<Env> {
 
     const edit = parseEdit(parsed);
     if (!edit) {
-      this.send(socket, { error: "Invalid edit." });
+      this.send(socket, { error: "Invalid edit. Reload the page if this tab is out of date." });
       return;
     }
 

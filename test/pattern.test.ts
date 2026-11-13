@@ -1,7 +1,7 @@
 import { expect, test } from "vite-plus/test";
 import {
   compose,
-  createPattern,
+  createSeedPattern,
   findCollisions,
   moveNote,
   placeNote,
@@ -12,6 +12,7 @@ import {
 import type { Pattern, Note } from "../src/shared/pattern";
 import { layoutNotes, locate, pick, SETTLE_MS } from "../src/client/space";
 import { INSTRUMENTS, pitchIndex, STEP_COUNT } from "../src/shared/score";
+import { STARTING_PHRASE } from "../src/shared/seed";
 
 const light: Note = { id: "1", step: 3, tone: 7 };
 const documentOf = (...notes: Note[]): Pattern => ({ notes });
@@ -22,7 +23,7 @@ function add(document: Pattern, note: Note) {
   return result.document;
 }
 
-test("draft tone positions are continuous while sounding pitches ascend through four instruments", () => {
+test("the interface exposes every score pitch, ascending within each instrument", () => {
   expect(new Set(TONES.map((tone) => tone.instrument))).toEqual(
     new Set(["bass", "mallet", "keys", "glass"]),
   );
@@ -35,14 +36,22 @@ test("draft tone positions are continuous while sounding pitches ascend through 
     ),
   ).toEqual({
     bass: ["C2", "D2", "E2", "G2", "A2", "C3"],
-    mallet: ["D3", "E3", "G3", "A3", "C4", "D4", "E4"],
-    keys: ["F4", "G4", "A4", "B4", "C5", "D5", "E5", "G5"],
-    glass: ["A5", "C6", "D6", "E6"],
+    mallet: ["D3", "E3", "G3", "A3", "C4", "D4", "E4", "G4", "A4"],
+    keys: ["C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5", "D5", "E5", "G5"],
+    glass: ["C5", "D5", "E5", "G5", "A5", "C6", "D6", "E6"],
   });
   for (const [index, tone] of TONES.entries()) {
     expect(INSTRUMENTS[tone.instrument].notes[tone.row]).toEqual(tone.note);
-    expect(tone.note.frequency).toBeGreaterThan(index ? TONES[index - 1].note.frequency : 0);
+    const previous = TONES[index - 1];
+    if (previous?.instrument === tone.instrument) {
+      expect(tone.note.frequency).toBeGreaterThan(previous.note.frequency);
+    }
     expect(toneFor({ ...light, tone: index + 0.2 })).toEqual(tone);
+  }
+  for (const [id, instrument] of Object.entries(INSTRUMENTS)) {
+    expect(TONES.filter((tone) => tone.instrument === id).map((tone) => tone.note.name)).toEqual(
+      [...instrument.notes].sort((a, b) => a.frequency - b.frequency).map((note) => note.name),
+    );
   }
 });
 
@@ -71,9 +80,10 @@ test("landing snaps both timing and pitch, wraps the loop seam, and is idempoten
 });
 
 test("muted piano allows several different pitches at the same beat, all with audible events", () => {
-  let document = add(documentOf(), { ...light, tone: 14 });
-  document = add(document, { ...light, id: "2", tone: 15.2 });
-  document = add(document, { ...light, id: "3", tone: 17 });
+  const keys = TONES.findIndex((tone) => tone.instrument === "keys");
+  let document = add(documentOf(), { ...light, tone: keys });
+  document = add(document, { ...light, id: "2", tone: keys + 1.2 });
+  document = add(document, { ...light, id: "3", tone: keys + 3 });
   const felt = compose(document);
   expect(felt).toHaveLength(3);
   expect(felt.map((note) => note.noteId)).toEqual(["1", "2", "3"]);
@@ -210,9 +220,9 @@ test("out-of-bounds picking stays finite and timing nudges wrap without moving t
   });
 });
 
-test("new patterns give every note a fresh UUID", () => {
-  const first = createPattern();
-  const second = createPattern();
+test("new seed patterns give every note a fresh UUID", () => {
+  const first = createSeedPattern();
+  const second = createSeedPattern();
   expect(first.notes).toHaveLength(20);
   expect(second.notes).toHaveLength(20);
   const ids = [...first.notes, ...second.notes].map(({ id }) => id);
@@ -224,23 +234,23 @@ test("new patterns give every note a fresh UUID", () => {
 
 test("the seed has no conflicting or silent lights and projection never changes the score", () => {
   const idFor = (index: number) => `seed-${index}`;
-  const document = createPattern(idFor);
+  const document = createSeedPattern(idFor);
   const before = structuredClone(document);
   const score = compose(document);
   expect(document.notes.map(({ id }) => id)).toEqual(
     Array.from({ length: 20 }, (_, index) => `seed-${index + 1}`),
   );
-  expect(document).toEqual(createPattern(idFor));
+  expect(document).toEqual(createSeedPattern(idFor));
   expect(
     document.notes.map((note) => [toneFor(note).instrument, toneFor(note).note.name, note.step]),
   ).toEqual([
     ["mallet", "C4", 0],
     ["mallet", "E4", 4],
-    ["mallet", "E4", 8],
+    ["mallet", "G4", 8],
     ["mallet", "E4", 12],
     ["mallet", "D4", 16],
-    ["mallet", "E4", 20],
-    ["mallet", "E4", 24],
+    ["mallet", "A4", 20],
+    ["mallet", "G4", 24],
     ["mallet", "E4", 28],
     ["keys", "E5", 2],
     ["keys", "D5", 6],
@@ -252,10 +262,17 @@ test("the seed has no conflicting or silent lights and projection never changes 
     ["keys", "E5", 30],
     ["bass", "C2", 0],
     ["bass", "G2", 16],
-    ["glass", "A5", 10],
+    ["glass", "E5", 10],
     ["glass", "C6", 26],
   ]);
   expect(score).toHaveLength(document.notes.length);
+  for (const [id, notes] of Object.entries(STARTING_PHRASE)) {
+    expect(
+      score
+        .filter((note) => note.instrument === id)
+        .map((note) => [INSTRUMENTS[note.instrument].notes[note.row].name, note.step]),
+    ).toEqual(notes);
+  }
   expect(new Set(score.map((note) => note.instrument))).toEqual(
     new Set(["bass", "mallet", "keys", "glass"]),
   );
