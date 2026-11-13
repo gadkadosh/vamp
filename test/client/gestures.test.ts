@@ -1647,6 +1647,64 @@ test("a remote edit during a gesture is preserved without becoming part of the l
   expect(surface().getAttribute("aria-disabled")).toBe("false");
 });
 
+test.each(["deletion", "collision"])(
+  "a remote %s invalidates a shared drag but keeps its preview until rejection",
+  (conflict) => {
+    const original = { id: crypto.randomUUID(), step: 3, tone: 7 };
+    const socket = connectRoom({ notes: [original] });
+    const before = notes();
+    pointer("pointerdown", 3, 7);
+    pointer("pointermove", 5, 9);
+    const preview = notes();
+    expect(preview).not.toEqual(before);
+    const remote = { id: crypto.randomUUID(), step: 5, tone: 9 };
+    const authoritative = { notes: conflict === "deletion" ? [remote] : [original, remote] };
+    act(() => socket.receive({ revision: 1, pattern: authoritative }));
+    expect(notes()).toEqual(preview);
+    expect(socket.sent).toHaveLength(0);
+
+    pointer("pointerup", 5, 9);
+    expectFinished();
+    expect(socket.sent).toHaveLength(1);
+    const request = socket.sent[0];
+    expect(request.changes).toEqual([{ type: "move", note: { ...original, step: 5, tone: 9 } }]);
+    expect(notes()).toEqual(preview);
+    expect(surface().getAttribute("aria-disabled")).toBe("true");
+
+    const error =
+      conflict === "deletion"
+        ? "That light was removed. Try another edit."
+        : "That sound is already here. Try another pitch or beat.";
+    act(() =>
+      socket.receive(
+        { revision: 1, pattern: authoritative },
+        { requestId: request.requestId, error },
+      ),
+    );
+    expect(lightIds()).toEqual(authoritative.notes.map((note) => note.id));
+    if (conflict === "collision") expect(notes()[0]).toBe(before[0]);
+    expect(surface().getAttribute("aria-disabled")).toBe("false");
+    expect(element(".gesture-hint").textContent).toContain(error);
+    expect(socket.sent).toHaveLength(1);
+  },
+);
+
+test("releasing a shared selection-only gesture reveals remote state without sending an edit", () => {
+  const original = { id: crypto.randomUUID(), step: 3, tone: 7 };
+  const socket = connectRoom({ notes: [original] });
+  pointer("pointerdown", 3, 7);
+  const remote = { id: crypto.randomUUID(), step: 5, tone: 10 };
+  act(() => socket.receive({ revision: 1, pattern: { notes: [remote] } }));
+  expect(lightIds()).toEqual([original.id]);
+  expect(socket.sent).toHaveLength(0);
+
+  pointer("pointerup", 3, 7);
+  expectFinished();
+  expect(lightIds()).toEqual([remote.id]);
+  expect(socket.sent).toHaveLength(0);
+  expect(surface().getAttribute("aria-disabled")).toBe("false");
+});
+
 test("canceling a shared preview reveals the latest remote state and release cannot recommit it", () => {
   const original = { id: crypto.randomUUID(), step: 3, tone: 7 };
   const socket = connectRoom({ notes: [original] });
