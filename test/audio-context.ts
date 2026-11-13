@@ -4,10 +4,12 @@ import type { InstrumentId } from "../src/shared/score";
 
 export function deferred() {
   let resolve: () => void;
-  const promise = new Promise<void>((onResolve) => {
+  let reject: (reason: Error) => void;
+  const promise = new Promise<void>((onResolve, onReject) => {
     resolve = onResolve;
+    reject = onReject;
   });
-  return { promise, resolve: () => resolve() };
+  return { promise, resolve: () => resolve(), reject: (reason: Error) => reject(reason) };
 }
 
 function parameter(value = 0) {

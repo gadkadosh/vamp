@@ -1433,6 +1433,37 @@ test.each(["play", "pause"])(
   },
 );
 
+test.each(["play", "pause"])(
+  "a failed %s from the previous mode cannot change new playback or report an error",
+  async (transition) => {
+    if (transition === "pause") await act(async () => button("Play loop").click());
+    const pending = deferred();
+    vi.spyOn(
+      TestAudioContext.prototype,
+      transition === "play" ? "resume" : "suspend",
+    ).mockImplementationOnce(() => pending.promise);
+    click(button(transition === "play" ? "Play loop" : "Pause loop"));
+    connectRoom(createSeedPattern());
+    await act(async () => button("Play loop").click());
+    await act(async () => pending.reject(new Error("Old playback failed")));
+    expect(button("Pause loop").disabled).toBe(false);
+    expect(button("Pause loop").getAttribute("aria-pressed")).toBe("true");
+    expect(element(".gesture-hint").textContent).not.toContain("Audio couldn’t");
+    expect(TestAudioContext.instances.at(-1)!.state).toBe("running");
+  },
+);
+
+test("switching compositions clears a playback error and allows a fresh start", async () => {
+  vi.spyOn(TestAudioContext.prototype, "resume").mockRejectedValueOnce(new Error("Cannot resume"));
+  await act(async () => button("Play loop").click());
+  expect(element(".gesture-hint").textContent).toContain("Audio couldn’t start");
+  connectRoom(createSeedPattern());
+  expect(element(".gesture-hint").textContent).not.toContain("Audio couldn’t");
+  await act(async () => button("Play loop").click());
+  expect(button("Pause loop").getAttribute("aria-pressed")).toBe("true");
+  expect(TestAudioContext.instances.at(-1)!.state).toBe("running");
+});
+
 test("mute is preserved when switching compositions", async () => {
   click(button("Mute audio"));
   await act(async () => button("Play loop").click());
