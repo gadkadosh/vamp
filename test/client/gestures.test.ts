@@ -1789,6 +1789,50 @@ test.each(["acknowledgement", "rejection", "disconnect"])(
   },
 );
 
+test.each(["acknowledgement", "rejection"])(
+  "after %s, canceling a new gesture restores saved state and the next edit stays independent",
+  (outcome) => {
+    const original = { id: crypto.randomUUID(), step: 1, tone: 7 };
+    const socket = connectRoom({ notes: [original] });
+    add(3, 9);
+    const firstRequest = socket.sent[0];
+    const firstChange = firstRequest.changes[0];
+    if (firstChange.type !== "add") throw new Error("Expected an added light");
+
+    const remote = { id: crypto.randomUUID(), step: 5, tone: 10 };
+    const saved: Pattern["notes"] = [original, remote];
+    if (outcome === "acknowledgement") saved.push(firstChange.note);
+    act(() =>
+      socket.receive(
+        { revision: 2, pattern: { notes: saved } },
+        {
+          requestId: firstRequest.requestId,
+          ...(outcome === "rejection" ? { error: "Edit rejected." } : {}),
+        },
+      ),
+    );
+    expect(lightIds()).toEqual(saved.map(({ id }) => id));
+    expect(surface().getAttribute("aria-disabled")).toBe("false");
+
+    pointer("pointerdown", 9, 12, surface(), { shiftKey: true });
+    pointer("pointermove", 11, 14);
+    expect(lightIds()).toHaveLength(saved.length + 2);
+    key("Escape");
+    pointer("pointerup", 11, 14);
+    expectFinished();
+    expect(lightIds()).toEqual(saved.map(({ id }) => id));
+    expect(socket.sent).toHaveLength(1);
+
+    add(13, 16);
+    expect(socket.sent).toHaveLength(2);
+    expect(socket.sent[1].changes).toEqual([
+      { type: "add", note: { id: expect.any(String), step: 13, tone: 16 } },
+    ]);
+    expect(lightIds()).toHaveLength(saved.length + 1);
+    expect(surface().getAttribute("aria-disabled")).toBe("true");
+  },
+);
+
 test("disconnect cancels unfinished gestures and reconnects without replaying edits", () => {
   const socket = connectRoom();
   pointer("pointerdown", 3, 7, surface(), { shiftKey: true });
