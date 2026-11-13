@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { HelpDialog } from "./HelpDialog";
 import { Icon } from "./Icon";
 import { PointSpace } from "./PointSpace";
-import { compose, noteLabel, toneFor } from "../shared/pattern";
+import { noteLabel, toneFor } from "../shared/pattern";
 import type { CollisionFeedback, Placement, Note, NoteId } from "../shared/pattern";
-import { Sequencer } from "./sequencer";
-import { DEFAULT_VOLUME, EMPTY_PLAYBACK, INSTRUMENTS } from "../shared/score";
+import { INSTRUMENTS } from "../shared/score";
+import { usePlayback } from "./usePlayback";
 import { useComposition } from "./useComposition";
 import type { EditPlacement } from "./useComposition";
 
@@ -13,28 +13,28 @@ export function App() {
   const [message, setMessage] = useState("");
   const composition = useComposition(setMessage);
   const { solo, pattern, canEdit, cancelGesture } = composition;
-  const score = useMemo(() => compose(pattern), [pattern]);
-  const scoreRef = useRef(score);
-  const sequencerRef = useRef<Sequencer | null>(null);
-  const getPlayback = useCallback(() => sequencerRef.current?.getPlayback() ?? EMPTY_PLAYBACK, []);
+  const {
+    playing,
+    busy,
+    muted,
+    error,
+    getPlayback,
+    togglePlayback,
+    toggleMute,
+    reset: resetPlayback,
+  } = usePlayback(pattern, solo);
   const [selectedId, setSelected] = useState<NoteId | null>(null);
   const selected = pattern.notes.find((note) => note.id === selectedId);
-  const [playing, setPlaying] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [muted, setMuted] = useState(false);
   const [help, setHelp] = useState(false);
   const [menu, setMenu] = useState(false);
   const menuAnchor = useRef<HTMLDivElement>(null);
   const menuTrigger = useRef<HTMLButtonElement>(null);
-  const [error, setError] = useState("");
   const [feedback, setFeedback] = useState<CollisionFeedback | null>(null);
 
   function changeMode(nextSolo: boolean) {
     if (!composition.changeMode(nextSolo)) return;
 
-    setPlaying(false);
-    setBusy(false);
-    setError("");
+    resetPlayback();
     setSelected(null);
     setFeedback(null);
     setMessage("");
@@ -47,24 +47,6 @@ export function App() {
     window.addEventListener("popstate", navigate);
     return () => window.removeEventListener("popstate", navigate);
   }, []);
-
-  useEffect(() => {
-    const sequencer = new Sequencer(() => scoreRef.current);
-    sequencerRef.current = sequencer;
-
-    return () => {
-      sequencer.dispose();
-      sequencerRef.current = null;
-    };
-  }, [solo]);
-
-  useEffect(() => {
-    sequencerRef.current?.setVolume(muted ? 0 : DEFAULT_VOLUME);
-  }, [muted, solo]);
-
-  useEffect(() => {
-    scoreRef.current = score;
-  }, [score]);
 
   useEffect(() => {
     if (!message) return;
@@ -144,29 +126,6 @@ export function App() {
     if (!composition.redo()) return;
     setFeedback(null);
     setMessage("One gesture forward.");
-  }
-
-  async function togglePlayback() {
-    const sequencer = sequencerRef.current;
-    if (!sequencer || busy) return;
-    setBusy(true);
-    setError("");
-
-    try {
-      if (playing) await sequencer.pause();
-      else await sequencer.play();
-      if (sequencerRef.current !== sequencer) return;
-      setPlaying(!playing);
-    } catch {
-      if (sequencerRef.current !== sequencer) return;
-      setError(
-        playing
-          ? "Audio couldn’t pause. Please try Pause again."
-          : "Audio couldn’t start. Please try Play again.",
-      );
-    } finally {
-      if (sequencerRef.current === sequencer) setBusy(false);
-    }
   }
 
   const onShortcut = useEffectEvent((event: globalThis.KeyboardEvent) => {
@@ -395,7 +354,7 @@ export function App() {
           className="sound-control"
           aria-label={muted ? "Unmute audio" : "Mute audio"}
           aria-pressed={muted}
-          onClick={() => setMuted(!muted)}
+          onClick={toggleMute}
         >
           <Icon name={muted ? "mute" : "sound"} />
           <span>{muted ? "Sound off" : "Sound on"}</span>
