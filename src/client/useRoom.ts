@@ -8,7 +8,6 @@ export function useRoom(
   onDisconnect: () => void,
 ) {
   const [status, setStatus] = useState<"connecting" | "connected" | "offline">("connecting");
-  const [pending, setPending] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
   const pendingId = useRef<string | null>(null);
   const timeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -24,7 +23,6 @@ export function useRoom(
     function connect() {
       if (stopped) return;
       setStatus("connecting");
-      setPending(false);
 
       const url = new URL("/api/room", window.location.href);
       url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
@@ -48,14 +46,8 @@ export function useRoom(
           return;
         }
 
-        if (message.requestId === pendingId.current || message.error) {
-          pendingId.current = null;
-          setPending(false);
-        }
-        if (!pendingId.current) {
-          clearTimeout(timeout.current);
-          setPending(false);
-        }
+        if (message.requestId === pendingId.current || message.error) pendingId.current = null;
+        if (!pendingId.current) clearTimeout(timeout.current);
 
         delay = 500;
         setStatus("connected");
@@ -68,7 +60,6 @@ export function useRoom(
         clearTimeout(timeout.current);
         socketRef.current = null;
         pendingId.current = null;
-        setPending(false);
         setStatus("offline");
         disconnect();
 
@@ -109,12 +100,11 @@ export function useRoom(
     }
 
     pendingId.current = requestId;
-    setPending(true);
     clearTimeout(timeout.current);
     // An unacknowledged edit is never retried: reconnect and load the durable state instead.
     timeout.current = setTimeout(() => socket.close(), 10_000);
     return true;
   }
 
-  return { status, pending, send };
+  return { status, send };
 }

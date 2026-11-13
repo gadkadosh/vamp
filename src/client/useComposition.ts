@@ -5,15 +5,18 @@ import { applyChanges, changesBetween } from "../shared/room";
 import { useRoom } from "./useRoom";
 
 type SoloHistory = { present: Pattern; past: Pattern[]; future: Pattern[] };
+type Gesture = { before: Pattern; cancel: () => void };
+// Only a gesture or an unacknowledged shared edit can overlay committed state.
+type EditSession =
+  | { phase: "idle" }
+  | { phase: "gesturing"; gesture: Gesture; preview: Pattern; activated: boolean }
+  | { phase: "awaiting-ack"; preview: Pattern };
 type Composition = {
   solo: boolean;
   sketch: SoloHistory | null;
   shared: Pattern;
-  // A gesture or an unacknowledged shared edit overlays, but never replaces, committed state.
-  preview: Pattern | null;
-  gestureActivated: boolean;
+  edit: EditSession;
 };
-type Gesture = { before: Pattern; cancel: () => void };
 export type EditPlacement = Placement & { changed: boolean };
 
 function startingSketch(): SoloHistory {
@@ -21,7 +24,8 @@ function startingSketch(): SoloHistory {
 }
 
 function visible(state: Composition): Pattern {
-  return state.preview ?? (state.solo ? state.sketch!.present : state.shared);
+  if (state.edit.phase !== "idle") return state.edit.preview;
+  return state.solo ? state.sketch!.present : state.shared;
 }
 
 export function useComposition(onMessage: (message: string) => void) {
@@ -31,30 +35,30 @@ export function useComposition(onMessage: (message: string) => void) {
       solo,
       sketch: solo ? startingSketch() : null,
       shared: { notes: [] },
-      preview: null,
-      gestureActivated: false,
+      edit: { phase: "idle" },
     };
   });
   // Commands and gesture sessions must see earlier edits even before React renders them.
   const current = useRef(state);
-  const gesture = useRef<Gesture | null>(null);
   const room = useRoom(
     !state.solo,
     (update, pending) => {
+      const state = current.current;
       apply({
-        ...current.current,
+        ...state,
         shared: update.state.pattern,
-        preview: gesture.current || pending ? current.current.preview : null,
+        edit: state.edit.phase === "awaiting-ack" && !pending ? { phase: "idle" } : state.edit,
       });
       if (update.error) onMessage(update.error);
     },
     () => {
       cancelGesture();
-      apply({ ...current.current, preview: null });
+      apply({ ...current.current, edit: { phase: "idle" } });
       onMessage("Connection lost. Your last edit may not have been saved.");
     },
   );
-  const canEdit = state.solo || (room.status === "connected" && !room.pending);
+  const pending = state.edit.phase === "awaiting-ack";
+  const canEdit = state.solo || (room.status === "connected" && !pending);
 
   function apply(next: Composition) {
     current.current = next;
@@ -62,11 +66,10 @@ export function useComposition(onMessage: (message: string) => void) {
   }
 
   function cancelGesture() {
-    const active = gesture.current;
-    if (!active) return false;
-    gesture.current = null;
-    apply({ ...current.current, preview: null, gestureActivated: false });
-    active.cancel();
+    const { edit } = current.current;
+    if (edit.phase !== "gesturing") return false;
+    apply({ ...current.current, edit: { phase: "idle" } });
+    edit.gesture.cancel();
     return true;
   }
 
@@ -78,38 +81,45 @@ export function useComposition(onMessage: (message: string) => void) {
       solo,
       sketch: solo ? (current.current.sketch ?? startingSketch()) : current.current.sketch,
       shared: { notes: [] },
-      preview: null,
+      edit: { phase: "idle" },
     });
     return true;
   }
 
-  function commit(before: Pattern, after: Pattern) {
+  function commitSolo(before: Pattern, after: Pattern) {
     const state = current.current;
-    if (state.solo) {
-      const sketch = state.sketch!;
-      apply({
-        ...state,
-        preview: null,
-        gestureActivated: false,
-        sketch:
-          after === before
-            ? sketch
-            : { present: after, past: [...sketch.past, before].slice(-60), future: [] },
-      });
+    const sketch = state.sketch!;
+    apply({
+      ...state,
+      edit: { phase: "idle" },
+      sketch:
+        after === before
+          ? sketch
+          : { present: after, past: [...sketch.past, before].slice(-60), future: [] },
+    });
+  }
+
+  function commitShared(before: Pattern, after: Pattern) {
+    const state = current.current;
+    const changes = changesBetween(before, after);
+    if (!changes.length || !room.send(changes)) {
+      apply({ ...state, edit: { phase: "idle" } });
       return;
     }
 
-    const changes = changesBetween(before, after);
-    let preview: Pattern | null = null;
-    if (changes.length && room.send(changes)) {
-      try {
-        preview = applyChanges(state.shared, changes);
-      } catch {
-        // Keep the local preview until the server explains a concurrent conflict.
-        preview = after;
-      }
+    let preview: Pattern;
+    try {
+      preview = applyChanges(state.shared, changes);
+    } catch {
+      // Keep the local preview until the server explains a concurrent conflict.
+      preview = after;
     }
-    apply({ ...state, preview, gestureActivated: false });
+    apply({ ...state, edit: { phase: "awaiting-ack", preview } });
+  }
+
+  function commit(before: Pattern, after: Pattern) {
+    if (current.current.solo) commitSolo(before, after);
+    else commitShared(before, after);
   }
 
   function edit(change: (pattern: Pattern) => Pattern) {
@@ -133,7 +143,9 @@ export function useComposition(onMessage: (message: string) => void) {
     const before = visible(current.current);
     const result = placeNote(before, candidate);
     if (result.accepted) {
-      if (preview) apply({ ...current.current, preview: result.document });
+      const state = current.current;
+      if (preview && state.edit.phase === "gesturing")
+        apply({ ...state, edit: { ...state.edit, preview: result.document } });
       else commit(before, result.document);
     }
     return { ...result, changed: result.document !== before };
@@ -142,21 +154,27 @@ export function useComposition(onMessage: (message: string) => void) {
   function beginGesture(cancel: () => void) {
     cancelGesture();
     const active = { before: visible(current.current), cancel };
-    gesture.current = active;
     // Freeze the gesture's base even before its first placement, as remote state advances.
-    apply({ ...current.current, preview: active.before });
+    apply({
+      ...current.current,
+      edit: { phase: "gesturing", gesture: active, preview: active.before, activated: false },
+    });
+    function isActive() {
+      const { edit } = current.current;
+      return edit.phase === "gesturing" && edit.gesture === active;
+    }
     return {
       activate: () => {
-        if (gesture.current === active) apply({ ...current.current, gestureActivated: true });
+        const state = current.current;
+        if (state.edit.phase === "gesturing" && state.edit.gesture === active)
+          apply({ ...state, edit: { ...state.edit, activated: true } });
       },
-      place: (note: Note) => (gesture.current === active ? place(note, true) : null),
+      place: (note: Note) => (isActive() ? place(note, true) : null),
       commit: () => {
-        if (gesture.current !== active) return;
-        gesture.current = null;
-        commit(active.before, visible(current.current));
+        if (isActive()) commit(active.before, visible(current.current));
       },
       cancel: () => {
-        if (gesture.current === active) cancelGesture();
+        if (isActive()) cancelGesture();
       },
     };
   }
@@ -212,10 +230,12 @@ export function useComposition(onMessage: (message: string) => void) {
     solo: state.solo,
     pattern: visible(state),
     canEdit,
-    canUndo: state.solo && (state.gestureActivated || !!state.sketch?.past.length),
+    canUndo:
+      state.solo &&
+      ((state.edit.phase === "gesturing" && state.edit.activated) || !!state.sketch?.past.length),
     canRedo: state.solo && !!state.sketch?.future.length,
     status: room.status,
-    pending: room.pending,
+    pending,
     changeMode,
     clear: () => {
       if (current.current.solo) edit(() => ({ notes: [] }));
