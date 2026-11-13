@@ -29,3 +29,7 @@ pnpm check      # Formatting, lint, and types
 pnpm test --run
 pnpm build
 ```
+
+## Deployment
+
+Pushes to `main` automatically deploy to [production](https://vamp.gadkadosh.workers.dev/) after CI passes.
