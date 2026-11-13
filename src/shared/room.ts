@@ -7,7 +7,14 @@ export type Change =
   | { type: "move"; note: Note }
   | { type: "remove"; id: NoteId };
 export type RoomState = { revision: number; pattern: Pattern };
-export type EditMessage = { type: "edit"; requestId: string; changes: Change[] };
+// Increment when numeric tone positions change, so old tabs cannot repitch shared notes.
+export const TONE_LAYOUT_VERSION = 1;
+export type EditMessage = {
+  type: "edit";
+  toneLayout: typeof TONE_LAYOUT_VERSION;
+  requestId: string;
+  changes: Change[];
+};
 export type StateMessage = {
   type: "state";
   state: RoomState;
@@ -44,6 +51,7 @@ export function parseEdit(value: unknown): EditMessage | null {
   if (
     !isRecord(value) ||
     value.type !== "edit" ||
+    value.toneLayout !== TONE_LAYOUT_VERSION ||
     !isId(value.requestId) ||
     !Array.isArray(value.changes) ||
     !value.changes.length ||
@@ -62,7 +70,7 @@ export function parseEdit(value: unknown): EditMessage | null {
     } else return null;
   }
 
-  return { type: "edit", requestId: value.requestId, changes };
+  return { type: "edit", toneLayout: TONE_LAYOUT_VERSION, requestId: value.requestId, changes };
 }
 
 export function changesBetween(before: Pattern, after: Pattern): Change[] {

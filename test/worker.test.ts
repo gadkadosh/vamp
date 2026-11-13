@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "vite-plus/test";
 import { createTestHarness, unstable_readConfig } from "wrangler";
-import { MAX_MESSAGE_LENGTH } from "../src/shared/room";
+import { MAX_MESSAGE_LENGTH, TONE_LAYOUT_VERSION } from "../src/shared/room";
 import type { Change, StateMessage } from "../src/shared/room";
 
 // The Vite plugin supplies the assets directory during builds. These tests run the worker alone.
@@ -72,7 +72,9 @@ async function connect() {
 function edit(socket: WebSocket, changes: Change[]) {
   const result = next(socket);
   const requestId = crypto.randomUUID();
-  socket.send(JSON.stringify({ type: "edit", requestId, changes }));
+  socket.send(
+    JSON.stringify({ type: "edit", toneLayout: TONE_LAYOUT_VERSION, requestId, changes }),
+  );
   return result;
 }
 
@@ -126,6 +128,7 @@ test("concurrent edits to different notes both succeed without a base revision",
     JSON.stringify({
       type: "edit",
       requestId: crypto.randomUUID(),
+      toneLayout: TONE_LAYOUT_VERSION,
       changes: [{ type: "move", note: movedA }],
     }),
   );
@@ -133,6 +136,7 @@ test("concurrent edits to different notes both succeed without a base revision",
     JSON.stringify({
       type: "edit",
       requestId: crypto.randomUUID(),
+      toneLayout: TONE_LAYOUT_VERSION,
       changes: [{ type: "move", note: movedB }],
     }),
   );
@@ -177,16 +181,19 @@ test("malformed, out-of-range and duplicate-ID edits leave state unchanged", asy
     JSON.stringify({
       type: "edit",
       requestId: crypto.randomUUID(),
+      toneLayout: TONE_LAYOUT_VERSION,
       changes: [{ type: "add", note: light(-1) }],
     }),
     JSON.stringify({
       type: "edit",
       requestId: crypto.randomUUID(),
+      toneLayout: TONE_LAYOUT_VERSION,
       changes: [{ type: "add", note: light(3, 999) }],
     }),
     JSON.stringify({
       type: "edit",
       requestId: crypto.randomUUID(),
+      toneLayout: TONE_LAYOUT_VERSION,
       changes: [{ type: "add", note: { ...light(3), step: 3.5 } }],
     }),
   ]) {
@@ -199,6 +206,25 @@ test("malformed, out-of-range and duplicate-ID edits leave state unchanged", asy
   const duplicate = await edit(socket, [{ type: "add", note: initial.state.pattern.notes[0] }]);
   expect(duplicate.error).toContain("already exists");
   expect(duplicate.state).toEqual(initial.state);
+});
+
+test("edits from outdated pitch layouts cannot change the shared composition", async () => {
+  const { socket, initial } = await connect();
+  for (const toneLayout of [undefined, 0, TONE_LAYOUT_VERSION + 1]) {
+    const response = next(socket);
+    socket.send(
+      JSON.stringify({
+        type: "edit",
+        toneLayout,
+        requestId: crypto.randomUUID(),
+        changes: [{ type: "add", note: light(3) }],
+      }),
+    );
+    const rejected = await response;
+    expect(rejected.error).toContain("Reload");
+    expect(rejected.state).toEqual(initial.state);
+  }
+  expect((await connect()).initial.state).toEqual(initial.state);
 });
 
 test("a batch can swap occupied positions when its final pattern is valid", async () => {

@@ -365,18 +365,19 @@ export function PointSpace(props: Props) {
           />
         ))}
         <p id="space-instructions" className="sr-only">
-          Left to right is time; bottom to top is pitch. Tap empty space to add a light. Tap a
-          selected light again to deselect it. Drag a light to move it. Alignment guides and a
-          landing point appear only while placing or dragging; release to settle on the previewed
-          beat and pitch. Occupied bass beats and identical sounds are rejected. Shift-drag to
-          scatter lights; right-click to remove. Keyboard: Page Up and Page Down select the previous
-          and next light in time order, with lower pitches first at the same beat. Navigation wraps
-          around the loop. Enter adds; arrows select a light, then move it one timing step or pitch.
-          Select a light to remove it using the button beside it. Keyboard focus uses a small frame.
-          Delete removes; Escape deselects from anywhere; Space plays or pauses. Tab leaves the
-          surface and its selected controls. In Solo mode, Undo restores the previous gesture, or
-          cancels the current gesture before it is released. Escape closes an open menu or help
-          dialog first, or cancels an unfinished gesture before deselecting.
+          Left to right is time. Bottom to top: bass, mallet, muted piano, then glass. Tap empty
+          space to add a light. Tap a selected light again to deselect it. Drag a light to move it.
+          Alignment guides and a landing point appear only while placing or dragging; release to
+          settle on the previewed beat and pitch. Occupied bass beats and identical sounds are
+          rejected. Shift-drag to scatter lights; right-click to remove. Keyboard: Page Up and Page
+          Down select the previous and next light in time order, with lower positions first at the
+          same beat. Navigation wraps around the loop. Enter adds; arrows select a light, then move
+          it one timing step or pitch. Select a light to remove it using the button beside it.
+          Keyboard focus uses a small frame. Delete removes; Escape deselects from anywhere; Space
+          plays or pauses. Tab leaves the surface and its selected controls. In Solo mode, Undo
+          restores the previous gesture, or cancels the current gesture before it is released.
+          Escape closes an open menu or help dialog first, or cancels an unfinished gesture before
+          deselecting.
         </p>
       </div>
       {selected && !dragging && (

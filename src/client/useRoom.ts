@@ -1,4 +1,5 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { TONE_LAYOUT_VERSION } from "../shared/room";
 import type { Change, EditMessage, StateMessage } from "../shared/room";
 
 export function useRoom(
@@ -94,7 +95,14 @@ export function useRoom(
 
     const requestId = crypto.randomUUID();
     try {
-      socket.send(JSON.stringify({ type: "edit", requestId, changes } satisfies EditMessage));
+      socket.send(
+        JSON.stringify({
+          type: "edit",
+          toneLayout: TONE_LAYOUT_VERSION,
+          requestId,
+          changes,
+        } satisfies EditMessage),
+      );
     } catch {
       socket.close();
       return false;

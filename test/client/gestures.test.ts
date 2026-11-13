@@ -5,10 +5,10 @@ import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import { App } from "../../src/client/App";
 import { locate } from "../../src/client/space";
-import { createPattern, TONES } from "../../src/shared/pattern";
+import { createSeedPattern, TONES } from "../../src/shared/pattern";
 import type { Pattern } from "../../src/shared/pattern";
 import type { EditMessage, StateMessage } from "../../src/shared/room";
-import { DEFAULT_VOLUME, STEP_SECONDS } from "../../src/shared/score";
+import { DEFAULT_VOLUME, INSTRUMENTS, STEP_SECONDS } from "../../src/shared/score";
 import { deferred, TestAudioContext } from "../audio-context";
 
 const size = { width: 900, height: 600 };
@@ -381,9 +381,9 @@ test("a rejected scatter creates no history entry and does not discard redo", ()
   const completed = notes();
   click(button("Undo"));
   const before = notes();
-  // Empty space at a different bass pitch, but the same occupied bass timing step.
-  pointer("pointerdown", 0, 1, surface(), { shiftKey: true });
-  pointer("pointerup", 0, 1);
+  // Empty space beyond the seed's hit target, but at the same occupied bass timing step.
+  pointer("pointerdown", 0, 2, surface(), { shiftKey: true });
+  pointer("pointerup", 0, 2);
   expect(notes()).toEqual(before);
   expect(button("Undo").disabled).toBe(true);
   click(button("Redo"));
@@ -450,7 +450,7 @@ test("Enter interrupts scattering and adds only the requested keyboard note", ()
   paint();
   key("Enter");
   expect(notes()).toHaveLength(before.length + 1);
-  expect(notes().at(-1)).toContain("E4, beat position 17 of 32");
+  expect(notes().at(-1)).toContain("Muted piano, D4, beat position 17 of 32");
   const added = notes();
   expectFinished();
   pointer("pointerup", 8, 10);
@@ -773,13 +773,32 @@ test("selected note details follow pitch and instrument changes", () => {
   key("PageUp");
   key("ArrowUp");
   key("ArrowUp");
-  expect(element(".selected-pitch").textContent).toBe("A5");
+  expect(element(".selected-pitch").textContent).toBe("C5");
   expect(element(".selected-pitch").style.color).toBe("#a5b4f6");
   expect(element(".selected-material").textContent).toBe("Glass chimes");
   click(button("Undo"));
   expect(element(".selected-pitch").textContent).toBe("G5");
   expect(element(".selected-pitch").style.color).toBe("#e99db3");
   expect(element(".selected-material").textContent).toBe("Muted piano");
+});
+
+test("the keyboard can reach every allowed pitch, including overlapping instrument ranges", () => {
+  click(button("Sketch options"));
+  click(element(".sketch-menu button:first-of-type"));
+  enterSurface();
+  key("Enter");
+  const light = element("[data-light]");
+  expect(TONES).toHaveLength(34);
+  for (let index = 0; index < TONES.length; index++) key("ArrowDown");
+  for (const [index, tone] of TONES.entries()) {
+    expect(light.getAttribute("aria-label")).toBe(
+      `${INSTRUMENTS[tone.instrument].name}, ${tone.note.name}, beat position 17 of 32`,
+    );
+    expect(element(".selected-pitch").textContent).toBe(tone.note.name);
+    expect(element(".selected-material").textContent).toBe(INSTRUMENTS[tone.instrument].name);
+    if (index < TONES.length - 1) key("ArrowUp");
+  }
+  expect(notes()).toHaveLength(1);
 });
 
 test("note navigation preserves the existing redo branch", () => {
@@ -843,6 +862,7 @@ function compactNeighbors() {
     observers.get(surface())!([{ contentRect: size }]);
     element(seedSelector(3)).focus();
   });
+  key("ArrowDown"); // Give these neighbors the same E4 pitch.
   for (let step = 0; step < 3; step++) key("ArrowLeft");
   return element(seedSelector(3));
 }
@@ -1219,8 +1239,8 @@ test("turning on reduced motion snaps a settling light and stops its animation",
 });
 
 test("collision feedback expires with a single redraw rather than a continuous frame loop", () => {
-  pointer("pointerdown", 0, 1, surface(), { shiftKey: true });
-  pointer("pointerup", 0, 1);
+  pointer("pointerdown", 0, 2, surface(), { shiftKey: true });
+  pointer("pointerup", 0, 2);
   expect(frames.size).toBe(0);
   const before = draws.mock.calls.length;
   frame(400);
@@ -1359,7 +1379,9 @@ test.each(["toggle", "navigation"])(
         }
       });
       if (path === "/") {
-        act(() => TestSocket.instances.at(-1)!.receive({ revision: 0, pattern: createPattern() }));
+        act(() =>
+          TestSocket.instances.at(-1)!.receive({ revision: 0, pattern: createSeedPattern() }),
+        );
       }
       expect(context.state).toBe("closed");
       expect(button("Play loop").disabled).toBe(false);
@@ -1389,7 +1411,7 @@ test.each(["play", "pause"])(
     click(button(transition === "play" ? "Play loop" : "Pause loop"));
     const oldContext = TestAudioContext.instances.at(-1)!;
     expect(element<HTMLButtonElement>(".play-button").disabled).toBe(true);
-    connectRoom(createPattern());
+    connectRoom(createSeedPattern());
     expect(oldContext.state).toBe("closed");
     expect(button("Play loop").disabled).toBe(false);
     await act(async () => button("Play loop").click());
@@ -1406,7 +1428,7 @@ test.each(["play", "pause"])(
 test("mute is preserved when switching compositions", async () => {
   click(button("Mute audio"));
   await act(async () => button("Play loop").click());
-  connectRoom(createPattern());
+  connectRoom(createSeedPattern());
   expect(button("Unmute audio").getAttribute("aria-pressed")).toBe("true");
   await act(async () => button("Play loop").click());
   expect(TestAudioContext.instances.at(-1)!.gains[0].gain.value).toBe(0);
@@ -1450,12 +1472,12 @@ test.each([false, true])(
     expect(button("Redo").disabled).toBe(true);
     click(button("Sketch options"));
     expect(element(".sketch-menu").textContent).toContain("Restore the starting phrase");
-    const socket = connectRoom(populated ? createPattern() : { notes: [] });
+    const socket = connectRoom(populated ? createSeedPattern() : { notes: [] });
     for (const label of ["Undo", "Redo", "Sketch options"]) {
       expect(document.querySelector(`button[aria-label="${label}"]`)).toBeNull();
     }
     expect(document.querySelector(".sketch-menu")).toBeNull();
-    expect(notes()).toHaveLength(populated ? createPattern().notes.length : 0);
+    expect(notes()).toHaveLength(populated ? createSeedPattern().notes.length : 0);
     expect(socket.sent).toHaveLength(0);
   },
 );
@@ -1500,7 +1522,7 @@ test("the default URL connects to the room instead of starting a local sketch", 
   add(3, 7);
   expect(socket.sent).toHaveLength(0);
   expect(notes()).toHaveLength(0);
-  const pattern = createPattern();
+  const pattern = createSeedPattern();
   act(() => socket.receive({ revision: 4, pattern }));
   expect(notes()).toHaveLength(20);
   expect(surface().getAttribute("aria-disabled")).toBe("false");
