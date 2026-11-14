@@ -229,17 +229,23 @@ test("collision feedback expires without leaving a permanent outline", () => {
 });
 
 test("loop position alone never illuminates a note that has not struck", () => {
+  const playing = { ...scene, playing: true };
+  const idle = render(scene).fills;
+  expect(render(playing, size, playback()).fills).not.toEqual(idle);
   const clock = { ...EMPTY_PLAYBACK, time: 0.05, position: 0 };
-  expect(render({ ...scene, playing: true }, size, clock).fills).toEqual(render(scene).fills);
+  expect(render(playing, size, clock).fills).toEqual(idle);
 });
 
 test("a buffered future onset cannot illuminate a note early", () => {
-  expect(render(scene, size, playback(onsetTime - 0.01)).fills).toEqual(render(scene).fills);
+  const idle = render(scene).fills;
+  expect(render(scene, size, playback()).fills).not.toEqual(idle);
+  expect(render(scene, size, playback(onsetTime - 0.01)).fills).toEqual(idle);
 });
 
 test.each([{ id: "2" }, { step: 3 }, { tone: 8 }, { tone: 10 }])(
   "an onset does not transfer to a newly created, moved, or repitched light: %j",
   (change) => {
+    expect(render(scene, size, playback()).fills).not.toEqual(render(scene).fills);
     const state = { ...scene, document: { notes: [{ ...document.notes[0], ...change }] } };
     expect(render(state, size, playback()).fills).toEqual(render(state).fills);
   },
